@@ -2,22 +2,27 @@
 # A floating tag destroys comparability between runs.
 
 renderers:
-  - name: libreoffice
-    role: render
-    image: "libreoffice"
-    digest: "sha256:REPLACE"
-    adapter: soffice
-    # same engine as Collabora Online; simplest batch converter
-    command: >
-      soffice --headless --norestore --convert-to pdf --outdir /out /in/document.docx
-
   - name: collabora-online
     role: render
     image: "collabora/code"
     digest: "sha256:REPLACE"
-    adapter: coolwsd
-    # different bundled font set and defaults than desktop LibreOffice;
-    # use this when the deployment target is Collabora specifically
+    adapter: collabora
+    # This is the engine Nextcloud ships by default, so it is the correct
+    # reference when the deployment target is Nextcloud + Collabora.
+    #
+    # The image is Nix-built and has NO shell, so the `soffice` wrapper script
+    # cannot run. Call the real binary directly.
+    entrypoint: "/opt/collaboraoffice/program/soffice.bin"
+    command: >
+      --headless --norestore --convert-to pdf --outdir /out /in/document.docx
+    run_args: ["--user", "0", "-e", "HOME=/tmp"]
+    # Verified producer string: "Collabora Office 26.04.5.2 (X86_64)"
+    #
+    # Bundled fonts: Carlito, Caladea, Liberation, DejaVu, Noto subset.
+    # Missing: Georgia, Calibri, Cambria, Gelasio. Georgia is substituted with
+    # NotoSerif (generic fallback, not metric-compatible) — this is the exact
+    # failure that broke the Danish pilot's templates. Fix by adding Gelasio to
+    # the image or removing Georgia from templates.
 
   - name: onlyoffice
     role: render

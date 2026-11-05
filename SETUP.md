@@ -248,24 +248,58 @@ Notes that matter:
 
 Pin every image by digest. A floating tag destroys comparability across runs.
 
-The commands below use **podman**, which is what is installed on the current node
-(rootless, 5.8.2, working). Docker is not present; if you install it, the same OCI images
-and flags apply — just swap the binary. Rootless podman is preferable for a harness that
-runs untrusted documents through a converter.
+The commands below use **podman**, which is what is installed on the lab host (rootless,
+5.8.2, verified). Docker is not present; if you install it, the same OCI images and flags
+apply — just swap the binary. Rootless podman is preferable for a harness that runs
+untrusted documents through a converter.
+
+### Verified: Collabora Online's engine as a batch converter
+
+LibreOffice is **not packaged for Rocky Linux 10** (`dnf search libreoffice` returns
+nothing) and no flatpak is installed, so renderers run in containers.
+
+The `collabora/code` image is the same engine Nextcloud ships by default. But its image is
+Nix-built and contains **no shell at all**, so the usual `soffice` wrapper script cannot
+execute (its `/bin/sh` interpreter is absent — you get a misleading "No such file or
+directory"). Invoke the real binary directly:
 
 ```bash
-# LibreOffice — same engine as Collabora Online, simplest batch converter
-podman run --rm -v "$PWD/in:/in:Z" -v "$PWD/out:/out:Z" \
-  libreoffice:<version>@sha256:<digest> \
-  soffice --headless --norestore \
-          --convert-to pdf --outdir /out /in/document.docx
+podman run --rm --user 0 -e HOME=/tmp \
+  -v "$PWD/in:/in:Z" -v "$PWD/out:/out:Z" \
+  --entrypoint /opt/collaboraoffice/program/soffice.bin \
+  collabora/code:<version>@sha256:<digest> \
+  --headless --norestore --convert-to pdf --outdir /out /in/document.docx
+```
 
-# Collabora Online — use when the deployment target is Collabora specifically
-# (different bundled font set and defaults than desktop LibreOffice)
-podman run --rm -d -p 9980:9980 collabora/code:<version>@sha256:<digest>
+Verified on the lab host: `Producer: Collabora Office 26.04.5.2 (X86_64)`.
 
-# OnlyOffice — heavier; includes its own PG/RabbitMQ/Redis in the all-in-one image
+Note the binary path is `/opt/collaboraoffice/program/soffice.bin` — Collabora ships its own
+branded build, not TDF LibreOffice. That is the correct choice when the deployment target is
+Nextcloud + Collabora, because it is the build and font set your users actually get.
+
+### Verified font gap
+
+The image ships Carlito (Calibri metric clone), Caladea (Cambria), Liberation
+(Arial/Times), DejaVu and a Noto subset. It does **not** ship Georgia, Calibri, Cambria, or
+Gelasio.
+
+A paragraph requesting **Georgia** was substituted with **NotoSerif** — the generic serif
+fallback, *not* a metric-compatible clone — which changes line breaks and pagination.
+
+This reproduces, empirically, the failure that broke the Danish pilot's templates. It is a
+configuration problem, not a code defect: either add Gelasio (metric-compatible Georgia) to
+the renderer image, or remove Georgia from the templates. Do it before blaming the engine.
+
+### Other renderers
+
+```bash
+# OnlyOffice — heavier; the all-in-one image bundles PG, RabbitMQ and Redis
 podman run --rm -d -p 8080:80 onlyoffice/documentserver:<version>@sha256:<digest>
+
+# Collabora Online as a service (only needed for WOPI/embedding fidelity tests;
+# batch conversion uses the soffice.bin path above)
+podman run --rm -d -p 9980:9980 --cap-add SYS_ADMIN \
+  collabora/code:<version>@sha256:<digest>
 ```
 
 Each renderer is an adapter behind:
