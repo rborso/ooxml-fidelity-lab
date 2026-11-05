@@ -26,7 +26,7 @@ Volume on a wrong metric is waste, so correctness first.
 | # | Step | Exit criterion | Test | Status |
 |---|---|---|---|---|
 | 5 | Named oracle builds and a Word-versus-Word drift command | Two oracles compared; drift reported per document class | `test_drift_between_runs` (stub oracles) | done |
-| 6 | Confirmation experiments for the open T0s | Each open family has a recorded experiment and a verdict | family records updated with verdicts | done |
+| 6 | Confirmation experiments for the open T0s | Each open family has a recorded experiment and a verdict | verdicts in family records | partial — experiments recorded, verdicts need Word UI |
 
 ## C. Corpus
 
@@ -34,7 +34,7 @@ Volume on a wrong metric is waste, so correctness first.
 |---|---|---|---|---|
 | 7 | Licence and redaction policy, enforced by `check --strict` | Missing licence fails the check; unpublishable items are refused | `test_strict_licence`, policy doc reviewed | done |
 | 8 | Synthetic construct suite, one per Word feature | ≥12 constructs, each a valid DOCX that renders | `test_all_constructs_build`, `test_constructs_render` | done |
-| 9 | Grow the tracker corpus past 60 documents, paginated fetch | ≥60 documents on disk, manifest valid | `fetch --pages 3` then `check` | done |
+| 9 | Grow the tracker corpus, paginated and idempotent fetch | 60+ documents on disk, manifest valid | `fetch --limit 40` then `check --strict` | partial — 40 of 60 |
 | 10 | Frozen holdout split | Manifest hash of the holdout recorded; runs honour `--split` | `test_holdout_frozen`, `test_split_filter` | done |
 
 ## D. Coverage
@@ -65,3 +65,26 @@ Volume on a wrong metric is waste, so correctness first.
 - Converging two engines on pixels. Knowledge transfers, code does not.
 - Replacing Microsoft Office. This is a switching-cost reducer.
 - Filing on public trackers on the operator's behalf. Drafts only.
+
+---
+
+## Where things stand
+
+66 tests. 40 corpus documents, 5 in a frozen holdout. 16 synthetic constructs. Five family
+records, three upstream drafts.
+
+Known partials, and what unblocks each:
+
+| Step | Blocked by |
+|---|---|
+| 6 — T0 confirmation verdicts | Word's UI, for the re-save experiments |
+| 9 — 60+ corpus documents | time; the fetch is idempotent and resumable |
+| 5 — real Word drift | a second licensed Word build; the mechanism is implemented and returns mean 1.0 on identical builds |
+
+Two findings the new checks produced on their first run, both worth attention:
+
+- **11 of 40 rendered PDFs have no extractable text.** Those documents cannot be compared
+  by text at all, and would read as total content loss. `archive` names them.
+- **A simple table document loses 6 characters going DOCX -> ODT -> DOCX.** Format churn is
+  real on the first hop, not just on complex documents.
+

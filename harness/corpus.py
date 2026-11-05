@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,6 +64,23 @@ def load(manifest: Path) -> tuple[int, list[Item]]:
             )
         )
     return int(data.get("corpus_version", 0)), items
+
+
+def filter_split(items: list[Item], split: str = "all") -> list[Item]:
+    if not split or split == "all":
+        return items
+    return [item for item in items if item.split == split]
+
+
+def holdout_digest(items: list[Item]) -> str:
+    """Fingerprint of the holdout set, so it can be checked for drift.
+
+    Published scores must come from documents that were never used to tune the
+    measurement. Freezing the digest is what makes that auditable.
+    """
+    holdout = sorted((i.id, i.sha256 or "") for i in items if i.split == "holdout")
+    payload = json.dumps(holdout, separators=(",", ":")).encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def load_overrides(path: Path) -> dict[str, dict]:

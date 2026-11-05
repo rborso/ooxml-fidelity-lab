@@ -105,6 +105,7 @@ def _page(title: str, active: str, body: str, prefix: str = "") -> str:
     nav = [
         ("index.html", "Overview", "index"),
         ("runs.html", "Runs", "runs"),
+        ("baseline.html", "Baseline", "baseline"),
         ("families.html", "Families", "families"),
     ]
     links = "".join(
@@ -349,6 +350,56 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         body.append("<tr><td colspan=6 class=mut>No runs yet.</td></tr>")
     body.append("</table>")
     (out_dir / "runs.html").write_text(_page("Runs", "runs", "\n".join(body)))
+
+    # ---- baseline ---------------------------------------------------------
+    body = ["<h2>Baseline</h2>"]
+    if latest:
+        summary = latest["summary"]
+        body.append(
+            f'<p class="mut">Run <span class="mono">{_esc(latest["started"])}</span>'
+            f' &middot; oracle <span class="mono">{_esc(latest["oracle"])}</span></p>'
+        )
+        classes = summary.get("classes") or []
+        if classes:
+            body.append(
+                "<table><tr><th>Document class</th><th>Documents</th><th>Mean</th>"
+                "<th>Weight</th><th>Fatal</th><th>Tiers</th></tr>"
+            )
+            for row in classes:
+                tiers = ", ".join(f"{k}:{v}" for k, v in (row.get("tiers") or {}).items())
+                body.append(
+                    f"<tr><td>{_esc(row['class'])}</td>"
+                    f'<td class="num">{row["count"]}</td>'
+                    f'<td class="num">{row["mean"]:.2f}</td>'
+                    f'<td class="num">{row["weight"]}</td>'
+                    f'<td class="num">{row["fatal"]}</td>'
+                    f'<td class="mono mut">{_esc(tiers)}</td></tr>'
+                )
+            body.append("</table>")
+            body.append(
+                f'<div class="cards" style="margin-top:14px">'
+                f'<div class="card"><div class="n">{summary.get("weighted_mean", 0):.3f}</div>'
+                f'<div class="l">weighted mean</div></div>'
+                f'<div class="card"><div class="n">{summary.get("count", 0)}</div>'
+                f'<div class="l">documents</div></div>'
+                f'<div class="card"><div class="n">{len(families)}</div>'
+                f'<div class="l">known families</div></div></div>'
+            )
+        else:
+            body.append('<p class="mut">This run predates per-class scoring.</p>')
+    else:
+        body.append("<p>No runs yet.</p>")
+
+    if families:
+        body.append("<h2>Known families</h2><table><tr><th>Family</th><th>Status</th></tr>")
+        for fam in families:
+            body.append(
+                f'<tr><td><a href="families/{_esc(fam["slug"])}.html">{_esc(fam["title"])}</a></td>'
+                f'<td class="mono">{_esc(fam["status"])}</td></tr>'
+            )
+        body.append("</table>")
+
+    (out_dir / "baseline.html").write_text(_page("Baseline", "baseline", "\n".join(body)))
 
     # ---- families ---------------------------------------------------------
     body = ["<h2>Failure families</h2>"]

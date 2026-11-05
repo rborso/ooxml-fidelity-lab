@@ -70,11 +70,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     work.mkdir(parents=True, exist_ok=True)
     tol = _load_tolerances(Path(args.tolerances) if args.tolerances else None)
 
+    classes: dict[str, str] = {}
     if args.corpus:
         version, items = corpus_mod.load(Path(args.corpus))
+        items = corpus_mod.filter_split(items, args.split)
         docs = [i.path for i in items if i.exists]
         ids = [i.id for i in items if i.exists]
-        corpus_label = f"{args.corpus} v{version}"
+        classes = {i.id: i.cls for i in items}
+        corpus_label = f"{args.corpus} v{version} split={args.split}"
     else:
         paths = synth.write_all(work / "docs")
         docs = paths
@@ -121,6 +124,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         if doc_id not in refs:
             reason = (oracle_results.get(doc_id) or {}).get("error") or "no reference PDF"
             results.append({"id": doc_id, "tier": "ORACLE-FAIL", "score": 0.0,
+                            "cls": classes.get(doc_id, "unclassified"),
                             "t0": None, "t1": None, "t2": None, "error": reason})
             print(f"{'ORACLE':9s} 0.00  {doc_id}  ({reason})")
             continue
@@ -129,13 +133,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
-        results.append({"id": doc_id, "tier": res["tier"], "score": res["score"], **res})
+        results.append({"id": doc_id, "tier": res["tier"], "score": res["score"],
+                        "cls": classes.get(doc_id, "unclassified"), **res})
         print(f"{res['tier']:9s} {res['score']:.2f}  {doc_id}")
 
+    from .scoring import aggregate, weights_from_config
+
+    agg = aggregate(results, weights_from_config(tol))
     summary = {
         "count": len(results),
         "by_tier": dict(Counter(r["tier"] for r in results)),
         "mean_score": round(sum(r["score"] for r in results) / len(results), 4) if results else 0.0,
+        "weighted_mean": agg["weighted_mean"],
+        "classes": agg["classes"],
     }
 
     payload = {
@@ -212,6 +222,72 @@ def cmd_crosscheck(args: argparse.Namespace) -> int:
         "outliers={outliers} threshold={threshold}".format(**summary)
     )
     return 0 if summary["ok"] else 1
+
+
+def cmd_drift(args: argparse.Namespace) -> int:
+    from .drift import load, reference_drift, score_drift
+
+    a_dir = Path(args.run_a).resolve()
+    b_dir = Path(args.run_b).resolve()
+    a, b = load(a_dir), load(b_dir)
+
+    drift = score_drift(a, b)
+    for row in drift["classes"]:
+        print(
+            f"{row['class']:20s} before={row['before']} after={row['after']} "
+            f"delta={row['delta']:+.4f}"
+        )
+    for change in drift["changes"][:25]:
+        print(
+            f"  {change['id']:26s} {change['before']:9s} -> {change['after']:9s} "
+            f"{change['delta']:+.4f}"
+        )
+    ref = reference_drift(a_dir, b_dir, a, b)
+    print(f"reference drift: documents={ref['documents']} mean={ref['mean']}")
+    return 0
+
+
+def cmd_freeze(args: argparse.Namespace) -> int:
+    from .corpus import holdout_digest
+
+    _, items = corpus_mod.load(Path(args.manifest))
+    digest = holdout_digest(items)
+    target = Path(args.out)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(digest + "\n")
+    count = sum(1 for item in items if item.split == "holdout")
+    print(f"holdout documents={count} digest={digest} -> {target}")
+    return 0
+
+
+def cmd_archive(args: argparse.Namespace) -> int:
+    from .archive import check_run
+
+    rows, ok = check_run(Path(args.run).resolve())
+    for row in rows:
+        if not row["pass"]:
+            print(f"  {Path(row['pdf']).name}: {'; '.join(row['issues'])}")
+    failing = sum(1 for row in rows if not row["pass"])
+    print(f"pdfs={len(rows)} failing={failing}")
+    return 0 if ok else 1
+
+
+def cmd_roundtrip(args: argparse.Namespace) -> int:
+    from .roundtrip import convergence, format_churn
+
+    doc = Path(args.doc).resolve()
+    work = Path(args.work).resolve()
+    conv = convergence(doc, work / "converge", hops=args.hops)
+    churn = format_churn(doc, work / "churn")
+    print(
+        f"converged={conv['converged']} at_hop={conv['converged_at']} "
+        f"hops={conv['hops']}"
+    )
+    print(
+        f"docx->odt->docx changed={churn['changed']} "
+        f"text {churn['text_before']}->{churn['text_after']}"
+    )
+    return 0 if conv["converged"] else 1
 
 
 def cmd_cluster(args: argparse.Namespace) -> int:
@@ -316,6 +392,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out", default="private/runs")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--only", default="", help="comma-separated document ids")
+    r.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
     r.add_argument("--domain", default="win11-0")
@@ -341,6 +418,26 @@ def build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--run", required=True)
     cl.add_argument("--corpus", default="private/corpus/manifest.yaml")
     cl.set_defaults(func=cmd_cluster)
+
+    dr = sub.add_parser("drift", help="compare two runs: score drift and reference drift")
+    dr.add_argument("--run-a", required=True)
+    dr.add_argument("--run-b", required=True)
+    dr.set_defaults(func=cmd_drift)
+
+    ar = sub.add_parser("archive", help="archival checks on a run's PDFs")
+    ar.add_argument("--run", required=True)
+    ar.set_defaults(func=cmd_archive)
+
+    fz = sub.add_parser("freeze", help="record the holdout split digest")
+    fz.add_argument("--manifest", default="private/corpus/manifest.yaml")
+    fz.add_argument("--out", default="private/corpus/holdout.sha256")
+    fz.set_defaults(func=cmd_freeze)
+
+    rt = sub.add_parser("roundtrip", help="convergence and format churn for one document")
+    rt.add_argument("--doc", required=True)
+    rt.add_argument("--work", default="private/roundtrip")
+    rt.add_argument("--hops", type=int, default=5)
+    rt.set_defaults(func=cmd_roundtrip)
 
     mn = sub.add_parser("minimize", help="ddmin a document against a failure predicate")
     mn.add_argument("--doc", required=True)

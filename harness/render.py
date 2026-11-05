@@ -73,3 +73,95 @@ def stub_oracle(docx: Path, out_dir: Path) -> Path:
     report produced with it is a determinism check, not a fidelity score.
     """
     return render_collabora(docx, out_dir)
+
+
+ONLYOFFICE_IMAGE = "docker.io/onlyoffice/documentserver"
+
+
+def onlyoffice_available(url: str | None = None) -> tuple[bool, str]:
+    """Probe a Document Server. Returns (available, reason)."""
+    import os
+    import urllib.error
+    import urllib.request
+
+    url = url or os.environ.get("ONLYOFFICE_URL")
+    if not url:
+        return (
+            False,
+            "ONLYOFFICE_URL is not set: start onlyoffice/documentserver and point "
+            "ONLYOFFICE_URL at it, then restart this process",
+        )
+    probe = url.rstrip("/") + "/healthcheck"
+    try:
+        with urllib.request.urlopen(probe, timeout=8) as response:
+            if response.status == 200:
+                return True, "ok"
+            return False, f"{probe} returned {response.status}"
+    except urllib.error.URLError as exc:
+        return False, f"{url} is unreachable: {exc.reason}"
+    except OSError as exc:
+        return False, f"{url} is unreachable: {exc}"
+
+
+def render_onlyoffice(docx: Path, out_dir: Path, url: str | None = None,
+                      port: int = 8099, timeout: int = 180) -> Path:
+    """Convert through a running ONLYOFFICE Document Server.
+
+    The server fetches the document over HTTP rather than accepting an upload,
+    so this starts a one-shot file server on the host and points the conversion
+    request at it. For the container to reach it, run the Document Server with
+    --network=host, or use an address it can route to.
+    """
+    import json
+    import threading
+    import urllib.request
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    available, reason = onlyoffice_available(url)
+    if not available:
+        raise RenderError(reason)
+
+    docx = docx.resolve()
+    out_dir = out_dir.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pdf = out_dir / (docx.stem + ".pdf")
+
+    handler = lambda *a, **kw: SimpleHTTPRequestHandler(*a, directory=str(docx.parent), **kw)
+    server = ThreadingHTTPServer(("0.0.0.0", port), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload = json.dumps(
+            {
+                "async": False,
+                "filetype": docx.suffix.lstrip(".").lower(),
+                "outputtype": "pdf",
+                "title": docx.name,
+                "url": f"http://127.0.0.1:{port}/{docx.name}",
+            }
+        ).encode()
+        request = urllib.request.Request(
+            (url or "").rstrip("/") + "/ConvertService.ashx",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    try:
+        result = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise RenderError(f"OnlyOffice returned non-JSON: {body[:200]!r}") from exc
+
+    if result.get("error"):
+        raise RenderError(f"OnlyOffice error {result.get('error')}: {result}")
+    remote = result.get("fileUrl")
+    if not remote:
+        raise RenderError(f"OnlyOffice returned no fileUrl: {result}")
+
+    with urllib.request.urlopen(remote, timeout=timeout) as response:
+        pdf.write_bytes(response.read())
+    return pdf

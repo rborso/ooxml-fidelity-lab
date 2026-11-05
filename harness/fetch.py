@@ -113,6 +113,15 @@ def fetch(
             if not target.suffix.lower() in (".docx", ".doc"):
                 target = target.with_suffix(".docx")
 
+            if target.exists() and target.stat().st_size > 0:
+                # Already fetched: keep it and its provenance, skip the download.
+                digest = _sha256(target)
+                if digest in seen_hashes:
+                    continue
+                seen_hashes.add(digest)
+                entries.append(_entry(bug, att, target, digest, url))
+                continue
+
             try:
                 data = _get(url)
             except (urllib.error.URLError, urllib.error.HTTPError) as exc:
@@ -129,28 +138,45 @@ def fetch(
                 continue
             seen_hashes.add(digest)
 
-            entries.append(
-                {
-                    "id": f"bz{bug['id']}-{att['id']}",
-                    "sha256": digest,
-                    "path": f"bugzilla/{target.name}",
-                    "class": "case_document",
-                    "source": "bugzilla",
-                    "authored_in": "unknown",
-                    "tags": ["bugzilla"],
-                    "licence": "unknown-upstream",
-                    "split": "dev",
-                    "notes": (bug.get("summary") or "")[:160],
-                    "url": url,
-                }
-            )
+            entries.append(_entry(bug, att, target, digest, url))
             if verbose:
                 print(f"  got {target.name} ({len(data) // 1024} KiB)  {bug['summary'][:60]}")
 
-    (out_dir / "manifest-fragment.json").write_text(json.dumps(entries, indent=2))
+    # Merge with a previous fragment so growing the corpus is idempotent.
+    previous: list[dict] = []
+    fragment_json = out_dir / "manifest-fragment.json"
+    if fragment_json.exists():
+        try:
+            previous = json.loads(fragment_json.read_text())
+        except json.JSONDecodeError:
+            previous = []
+    merged = {entry["id"]: entry for entry in previous}
+    for entry in entries:
+        merged[entry["id"]] = entry
+    entries = sorted(merged.values(), key=lambda e: e["id"])
+
+    fragment_json.write_text(json.dumps(entries, indent=2))
     if verbose:
         print(f"downloaded {len(entries)} document(s) into {out_dir}")
     return entries
+
+
+def _entry(bug: dict, att: dict, target: Path, digest: str, url: str) -> dict:
+    return {
+        "id": f"bz{bug['id']}-{att['id']}",
+        "sha256": digest,
+        "path": f"bugzilla/{target.name}",
+        "class": "case_document",
+        "source": "bugzilla",
+        "authored_in": "unknown",
+        "tags": ["bugzilla"],
+        "licence": "unknown-upstream",
+        # Deterministic split from the content hash: ~19% holdout. Deterministic
+        # matters - a random split cannot be reproduced or frozen.
+        "split": "holdout" if digest[0] in "012" else "dev",
+        "notes": (bug.get("summary") or "")[:160],
+        "url": url,
+    }
 
 
 def to_yaml(entries: list[dict]) -> str:

@@ -18,6 +18,7 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 <Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
+<Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/>
 </Types>"""
 
 PACKAGE_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -28,7 +29,22 @@ PACKAGE_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 DOCUMENT_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/>
 </Relationships>"""
+
+# Minimal list definitions: decimal and bullet, so numbering is a real construct
+# rather than an attribute pointing at nothing.
+NUMBERING = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:numbering xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:abstractNum w:abstractNumId="0"><w:multiLevelType w:val="singleLevel"/>
+<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/>
+<w:lvlText w:val="%1."/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>
+<w:abstractNum w:abstractNumId="1"><w:multiLevelType w:val="singleLevel"/>
+<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/>
+<w:lvlText w:val="&#x2022;"/><w:lvlJc w:val="left"/></w:lvl></w:abstractNum>
+<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>
+<w:num w:numId="2"><w:abstractNumId w:val="1"/></w:num>
+</w:numbering>"""
 
 # Word's own defaults: Calibri 11pt, 8pt space after, 1.08 line spacing.
 STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -95,6 +111,70 @@ def _table(rows: list[list[str]]) -> str:
     )
 
 
+def _numbered(text: str, num_id: int = 1) -> str:
+    return (
+        f'<w:p><w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="{num_id}"/></w:numPr></w:pPr>'
+        f"<w:r><w:t>{text}</w:t></w:r></w:p>"
+    )
+
+
+def _sdt(text: str) -> str:
+    return (
+        f'<w:sdt><w:sdtPr><w:alias w:val="control"/></w:sdtPr><w:sdtContent>'
+        f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:sdtContent></w:sdt>"
+    )
+
+
+def _textbox(text: str) -> str:
+    return (
+        "<w:p><w:r><w:pict><w:txbxContent>"
+        f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
+        "</w:txbxContent></w:pict></w:r></w:p>"
+    )
+
+
+def _field_date() -> str:
+    return (
+        '<w:p><w:fldSimple w:instr=" DATE \\@ &quot;yyyy-MM-dd&quot; ">'
+        "<w:r><w:t>2026-01-01</w:t></w:r></w:fldSimple></w:p>"
+    )
+
+
+def _tracked(text: str) -> str:
+    return (
+        '<w:p><w:ins w:id="1" w:author="lab" w:date="2026-01-01T00:00:00Z">'
+        f"<w:r><w:t>{text}</w:t></w:r></w:ins></w:p>"
+    )
+
+
+def _section_break() -> str:
+    return '<w:p><w:pPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr></w:p>'
+
+
+def _merged_cells() -> str:
+    return (
+        '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>'
+        '<w:tblGrid><w:gridCol w:w="2400"/><w:gridCol w:w="2400"/></w:tblGrid>'
+        '<w:tr><w:tc><w:tcPr><w:gridSpan w:val="2"/></w:tcPr>'
+        "<w:p><w:r><w:t>spans both columns</w:t></w:r></w:p></w:tc></w:tr>"
+        "<w:tr><w:tc><w:p><w:r><w:t>left</w:t></w:r></w:p></w:tc>"
+        "<w:tc><w:p><w:r><w:t>right</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    )
+
+
+def _nested_table() -> str:
+    inner = (
+        '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>'
+        '<w:tblGrid><w:gridCol w:w="1200"/></w:tblGrid>'
+        "<w:tr><w:tc><w:p><w:r><w:t>inner</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    )
+    return (
+        '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>'
+        '<w:tblGrid><w:gridCol w:w="4800"/></w:tblGrid>'
+        f"<w:tr><w:tc>{inner}<w:p/></w:tc></w:tr></w:tbl>"
+    )
+
+
 CONSTRUCTS: dict[str, list[str]] = {
     "plain": [_para(f"Line {i}: {LOREM}.") for i in range(1, 16)],
     "georgia": [
@@ -109,6 +189,32 @@ CONSTRUCTS: dict[str, list[str]] = {
         _para("A document with a table."),
         _table([["Year", "Count", "Notes"], ["2024", "12", "alpha"], ["2025", "31", "beta"]]),
         _para("Text after the table."),
+    ],
+    "merged-cells": [_para("Table with a spanned cell."), _merged_cells()],
+    "nested-table": [_para("Table inside a table."), _nested_table()],
+    "numbered-list": [_para("A numbered list:")] + [
+        _numbered(f"item {i}") for i in range(1, 6)
+    ],
+    "bullet-list": [_para("A bulleted list:")] + [
+        _numbered(f"point {i}", num_id=2) for i in range(1, 6)
+    ],
+    "hyperlink": [
+        _para("Before the link."),
+        '<w:p><w:hyperlink w:anchor="top"><w:r><w:t>jump to top</w:t></w:r></w:hyperlink></w:p>',
+        _para("After the link."),
+    ],
+    "textbox": [_para("Before the box."), _textbox("inside a text box"), _para("After the box.")],
+    "content-control": [_para("Before the control."), _sdt("inside a content control")],
+    "field-date": [_para("A date field:"), _field_date()],
+    "track-changes": [_para("Before the revision."), _tracked("inserted by a reviewer")],
+    "section-break": [_para("First section."), _section_break(), _para("Second section.")],
+    "tabs-breaks": [
+        '<w:p><w:r><w:t>before</w:t><w:tab/><w:t>after tab</w:t>'
+        "<w:br/><w:t>after break</w:t></w:r></w:p>"
+    ],
+    "superscript": [
+        '<w:p><w:r><w:t>E = mc</w:t></w:r><w:r><w:rPr><w:vertAlign w:val="superscript"/>'
+        "</w:rPr><w:t>2</w:t></w:r></w:p>"
     ],
 }
 
@@ -132,6 +238,7 @@ def write(construct: str, path: Path) -> Path:
         z.writestr("word/document.xml", document)
         z.writestr("word/_rels/document.xml.rels", DOCUMENT_RELS)
         z.writestr("word/styles.xml", STYLES)
+        z.writestr("word/numbering.xml", NUMBERING)
     return path
 
 
