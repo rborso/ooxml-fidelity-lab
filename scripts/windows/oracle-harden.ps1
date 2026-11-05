@@ -142,10 +142,12 @@ function Set-ServiceState {
 }
 
 function Disable-TaskPath {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param([string]$TaskPath)
     $tasks = Get-ScheduledTask -TaskPath $TaskPath -ErrorAction SilentlyContinue
     if (-not $tasks) { Write-Log "skip  tasks $TaskPath (none)" 'gray'; return }
     foreach ($t in $tasks) {
+        if (-not $PSCmdlet.ShouldProcess("$($t.TaskPath)$($t.TaskName)", 'disable')) { continue }
         try {
             Disable-ScheduledTask -TaskPath $t.TaskPath -TaskName $t.TaskName -ErrorAction Stop | Out-Null
             $script:Changes.Add("task $($t.TaskPath)$($t.TaskName)=disabled")
@@ -156,7 +158,12 @@ function Disable-TaskPath {
     }
 }
 function Invoke-PowerCfg {
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param([string[]]$Arguments, [string]$Label)
+    if (-not $PSCmdlet.ShouldProcess("powercfg $($Arguments -join ' ')", $Label)) {
+        Write-Log "whatif power: $Label" 'gray'
+        return $false
+    }
     $out = & powercfg @Arguments 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Log "ok    power: $Label" 'green'
@@ -184,7 +191,7 @@ $ProtectedAppx = @(
 )
 $ProtectedAppxPatterns = @('*VCLibs*', '*NET.Native*', '*UI.Xaml*', '*Services.Store*')
 
-# Store apps to remove. Allowlist only — never blanket-remove.
+# Store apps to remove. Allowlist only, never blanket-remove.
 $AppxRemove = @(
     'Microsoft.549981C3F5F10',            # Cortana
     'Microsoft.BingNews', 'Microsoft.BingWeather', 'Microsoft.BingSearch',
@@ -395,7 +402,7 @@ Invoke-PowerCfg @('/change', 'disk-timeout-ac', '0')     'disk timeout 0'
 Invoke-PowerCfg @('/change', 'monitor-timeout-ac', '0')  'display timeout 0 (AC)'
 Invoke-PowerCfg @('/change', 'monitor-timeout-dc', '0')  'display timeout 0 (DC)'
 
-# Never prompt for a password on wake — a locked session can stall UI automation.
+# Never prompt for a password on wake: a locked session can stall UI automation.
 Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_NONE', 'CONSOLELOCK', '0') 'no password on wake'
 # Keep the CPU at a fixed state so timing is not frequency-dependent.
 Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'PROCTHROTTLEMIN', '100') 'CPU minimum state 100%'
@@ -407,12 +414,14 @@ Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_ENERGYSAVER', 'ESBA
 Invoke-PowerCfg @('/setactive', 'SCHEME_CURRENT') 'apply power settings'
 
 if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null }
-$excl = (Get-MpPreference).ExclusionPath
-if ($excl -notcontains $WorkDir) {
-    Add-MpPreference -ExclusionPath $WorkDir -ErrorAction SilentlyContinue
-    Write-Log "ok    Defender exclusion: $WorkDir" 'green'
-} else { Write-Log "skip  Defender exclusion (present)" 'gray' }
-Add-MpPreference -ExclusionProcess 'WINWORD.EXE' -ErrorAction SilentlyContinue
+if ($PSCmdlet.ShouldProcess($WorkDir, 'add Defender exclusion')) {
+    $excl = (Get-MpPreference).ExclusionPath
+    if ($excl -notcontains $WorkDir) {
+        Add-MpPreference -ExclusionPath $WorkDir -ErrorAction SilentlyContinue
+        Write-Log "ok    Defender exclusion: $WorkDir" 'green'
+    } else { Write-Log "skip  Defender exclusion (present)" 'gray' }
+    Add-MpPreference -ExclusionProcess 'WINWORD.EXE' -ErrorAction SilentlyContinue
+}
 
 # Word must never be blocked by a "file from another computer" mark.
 Set-RegValue 'HKLM:\SOFTWARE\Microsoft\Office\16.0\Word\Security\Trusted Locations\Location1' 'Path' "$WorkDir\" 'String'
@@ -455,7 +464,7 @@ if (-not $SkipSession) {
 foreach ($svc in $MustRemainRunning) {
     $s = Get-Service -Name $svc -ErrorAction SilentlyContinue
     if ($s -and $s.StartType -eq 'Disabled') {
-        Write-Log "FIX   $svc was disabled — restoring to Manual" 'red'
+        Write-Log "FIX   $svc was disabled - restoring to Manual" 'red'
         Set-Service -Name $svc -StartupType Manual -ErrorAction SilentlyContinue
         $script:Failures.Add("restored $svc")
     }
