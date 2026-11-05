@@ -4,10 +4,18 @@
 **Family key:** floating text box (`w:txbxContent` / `fSpec`) in a `.doc` file × content absent
 **Tier:** T0 — data loss
 **Fix class:** `renderer`
-**Affected:** 1 document so far (`bz34722-43806`)
+**Affected:** 1 document so far (`bz34722-43806`), plus the mirror case `bz36791-46282`
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---
+
+## Related
+
+`bz36791-46282` is the mirror image: a `.docx` with three text boxes and two drawings, where
+the **candidate emits 7 extra tokens** rather than dropping them. Same construct family,
+opposite direction — which strongly suggests the problem is not "text boxes are unsupported"
+but "text boxes are traversed inconsistently", sometimes skipped and sometimes visited twice
+or expanded.
 
 ## Observed
 

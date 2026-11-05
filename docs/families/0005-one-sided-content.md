@@ -1,54 +1,60 @@
-# Family 0005 — One engine emits text the other does not
+# Family 0005 — A table-of-contents field is regenerated, adding text Word does not show
 
-**Status:** explained (hypothesis, two instances)
-**Family key:** content present on one side only × extra tokens in the candidate
-**Tier:** T0 — but the direction matters
-**Fix class:** `renderer` (possibly `adjudicate`)
-**Affected:** 2 documents (`bz32363-205622`, `bz36791-46282`)
+**Status:** decided — `adjudicate`
+**Family key:** `TOC` field result × content present only in the candidate
+**Tier:** T0 (by count only), but not data loss
+**Fix class:** `adjudicate`
+**Affected:** 1 document (`bz32363-205622`)
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---
 
 ## Observed
 
-The candidate has **more** text than the reference:
-
-| Document | Diff | Upstream summary |
-|---|---|---|
-| `bz32363-205622` | extra 93 tokens | *No way to define 2 titles for a section: full vs short* |
-| `bz36791-46282` | extra 7 tokens (`le`, `2011`, `Réponse`, `souhaitée`) | *Text and images are not displayed from a docx* |
+The candidate renders **93 tokens that the reference does not**: `using`, `a`, `character`,
+`style`, and so on. Nothing is missing in either direction.
 
 ## Mechanism
 
-**Hypothesis:** both are field-expansion differences. In `bz32363` the upstream issue is
-explicitly about long versus short section titles used in headers and fields; an engine that
-expands a field where Word does not will emit tokens Word never rendered. In `bz36791` the
-extras are French fragments consistent with field or caption text.
-
-Direction matters for triage: "extra in candidate" is not automatically a defect. Sometimes
-the reference is the one dropping content, and the correct decision is `adjudicate`.
-
-## Evidence
+**Confirmed by inspection.** The document contains one field:
 
 ```
-run-20261105T194923Z  bz32363-205622  T0  extra 93
-run-20261105T194923Z  bz36791-46282   T0  extra 7
+TOC \f \o "1-9" \h
 ```
+
+A table of contents is a *field*, and what Word displays is the cached result stored in the
+file. Collabora regenerates it from the headings on load, so it emits entries that were
+never in Word's cached result. The upstream issue is titled *"No way to define 2 titles for
+a section: full vs short"* — the document is explicitly about which title a TOC should use.
 
 ## Decision
 
-Undecided between `renderer` and `adjudicate`. Resolve by rendering the same document in
-Word with fields toggled to show codes (`Alt+F9` equivalent) and checking whether the extra
-tokens are field results Word simply did not paint.
+**`adjudicate`: do not chase parity.**
 
-This is exactly the case where the harness must not assume Word is right.
+Two independent reasons:
+
+1. The reference is showing a *stale cache*. Collabora showing the current headings is not
+   wrong; it is arguably more correct.
+2. Nobody can win this comparison. Any engine that recalculates fields will differ from any
+   engine that does not, and which behaviour a document's author wanted is unknowable from
+   the file.
+
+The measurement change that follows: generated field results should not be scored as
+content divergence. Either freeze fields in the reference, or exclude TOC/index fields from
+the T0 comparison. Until then this document is a known and accepted difference.
 
 ## Retest
 
-Pending the adjudication.
+Not applicable — no fix is intended. If the harness later learns to exclude field-generated
+regions, this family should move to `PASS`.
 
 ## History
 
 | Run | Renderer digest | Oracle build | Result |
 |---|---|---|---|
-| run-20261105T194923Z | `sha256:808410e7…` (26.04.5.2) | 16.0.19127.20860 | open — needs adjudication |
+| run-20261105T194923Z | `sha256:808410e7…` (26.04.5.2) | 16.0.19127.20860 | wontfix — field regeneration |
+
+## Note
+
+`bz36791-46282` was originally grouped here and has been reclassified: it contains no fields
+at all, only three text boxes and two drawings. See family 0002.

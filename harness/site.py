@@ -79,6 +79,14 @@ margin-bottom:10px}
 .doc h1{font-size:24px;margin:0 0 14px}
 .doc h2{font-size:13px;margin-top:26px}
 .doc table{font-size:13.5px}
+.page{margin:22px 0 30px}
+.page .pn{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mut);
+margin-bottom:8px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.cols figure{margin:0}
+.cols figcaption{font-size:12px;color:var(--mut);margin-bottom:6px}
+.cols img{width:100%;border:1px solid var(--line);border-radius:4px;background:#fff}
+@media (max-width:760px){.cols{grid-template-columns:1fr}}
 footer{color:var(--mut);font-size:12.5px;border-top:1px solid var(--line);margin-top:40px;
 padding-top:14px}
 """
@@ -92,20 +100,20 @@ def _badge(tier: str) -> str:
     return f'<span class="badge {TIER_CLASS.get(tier, "warn")}">{_esc(tier)}</span>'
 
 
-def _page(title: str, active: str, body: str) -> str:
+def _page(title: str, active: str, body: str, prefix: str = "") -> str:
     nav = [
         ("index.html", "Overview", "index"),
         ("runs.html", "Runs", "runs"),
         ("families.html", "Families", "families"),
     ]
     links = "".join(
-        f'<a href="{href}" class="{"on" if key == active else ""}">{label}</a>'
+        f'<a href="{prefix}{href}" class="{"on" if key == active else ""}">{label}</a>'
         for href, label, key in nav
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{_esc(title)}</title><link rel="stylesheet" href="assets/style.css"></head>
+<title>{_esc(title)}</title><link rel="stylesheet" href="{prefix}assets/style.css"></head>
 <body><header><div class="in"><h1>OOXML Fidelity Lab</h1><nav>{links}</nav></div></header>
 <main>{body}</main></body></html>"""
 
@@ -159,6 +167,96 @@ def _render_md(text: str) -> str:
     return _md.markdown(text, extensions=["tables", "fenced_code"])
 
 
+def _find_pdfs(run_dir: Path, doc_id: str) -> tuple[Path | None, Path | None]:
+    """Reference PDF from the oracle, candidate PDF from the renderer."""
+    ref = run_dir / "ref" / doc_id / "document.pdf"
+    cand_dir = run_dir / "cand" / doc_id
+    cand = None
+    if cand_dir.exists():
+        found = sorted(cand_dir.glob("*.pdf"))
+        cand = found[0] if found else None
+    return (ref if ref.exists() else None, cand)
+
+
+def _page_images(pdf: Path, media_dir: Path, prefix: str, zoom: float = 1.2, max_pages: int = 12):
+    """Rasterise pages once and cache them on disk."""
+    import pymupdf
+
+    media_dir.mkdir(parents=True, exist_ok=True)
+    images: list[str] = []
+    doc = pymupdf.open(pdf)
+    try:
+        for index, page in enumerate(doc):
+            if index >= max_pages:
+                break
+            name = f"{prefix}-{index + 1}.png"
+            target = media_dir / name
+            if not target.exists():
+                pix = page.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), alpha=False)
+                pix.save(target)
+            images.append(name)
+    finally:
+        doc.close()
+    return images
+
+
+def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path) -> int:
+    run_dir = runs_dir / run["_dir"]
+    run_out = out_dir / "documents" / run["_dir"]
+    media_root = out_dir / "media" / run["_dir"]
+    built = 0
+
+    for doc in run["documents"]:
+        doc_id = doc["id"]
+        ref_pdf, cand_pdf = _find_pdfs(run_dir, doc_id)
+        if not ref_pdf and not cand_pdf:
+            continue
+        ref_imgs = _page_images(ref_pdf, media_root / doc_id, "word") if ref_pdf else []
+        cand_imgs = _page_images(cand_pdf, media_root / doc_id, "cand") if cand_pdf else []
+
+        rows = []
+        for index in range(max(len(ref_imgs), len(cand_imgs))):
+            base = f"../../media/{run['_dir']}/{doc_id}"
+            left = (
+                f'<img src="{base}/{ref_imgs[index]}" alt="Word page {index + 1}" loading="lazy">'
+                if index < len(ref_imgs)
+                else '<p class="mut">not rendered</p>'
+            )
+            right = (
+                f'<img src="{base}/{cand_imgs[index]}" alt="Collabora page {index + 1}" loading="lazy">'
+                if index < len(cand_imgs)
+                else '<p class="mut">not rendered</p>'
+            )
+            rows.append(
+                f'<div class="page"><div class="pn">page {index + 1}</div><div class="cols">'
+                f"<figure><figcaption>Microsoft Word</figcaption>{left}</figure>"
+                f"<figure><figcaption>Collabora</figcaption>{right}</figure>"
+                "</div></div>"
+            )
+
+        t2 = doc.get("t2") or {}
+        error = doc.get("error") or ""
+        body = [
+            '<p><a href="../../index.html">&larr; all documents</a></p>',
+            f'<h2 style="margin-top:0">{_esc(doc_id)}</h2>',
+            f'<p>{_badge(doc["tier"])} &nbsp; score {doc["score"]:.2f}'
+            f' &middot; median {t2.get("median_pt", "&mdash;")} pt'
+            f' &middot; p95 {t2.get("p95_pt", "&mdash;")} pt</p>',
+        ]
+        if error:
+            body.append(f'<div class="note">{_esc(error)}</div>')
+        if not rows:
+            body.append('<p class="mut">No rendered pages available for this document.</p>')
+        body.extend(rows)
+
+        run_out.mkdir(parents=True, exist_ok=True)
+        (run_out / f"{doc_id}.html").write_text(
+            _page(doc_id, "index", "\n".join(body), prefix="../../")
+        )
+        built += 1
+    return built
+
+
 def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "assets").mkdir(exist_ok=True)
@@ -200,19 +298,21 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
 
         body.append("<h2>Documents in this run</h2><table><tr><th>Document</th><th>Tier</th>"
                     "<th>Score</th><th>Median&nbsp;pt</th><th>p95&nbsp;pt</th>"
-                    "<th>Fonts</th></tr>")
+                    "<th>Fonts</th><th>Pages</th></tr>")
         for doc in latest["documents"]:
             t2 = doc.get("t2") or {}
             fonts = t2.get("fonts_missing") or []
             detail = doc.get("error") or ""
+            link = f"documents/{_esc(latest['_dir'])}/{_esc(doc['id'])}.html"
             body.append(
                 "<tr>"
-                f'<td class="mono">{_esc(doc["id"])}</td>'
+                f'<td class="mono"><a href="{link}">{_esc(doc["id"])}</a></td>'
                 f"<td>{_badge(doc['tier'])}</td>"
                 f'<td class="num">{doc["score"]:.2f}</td>'
                 f'<td class="num">{t2.get("median_pt", "&mdash;")}</td>'
                 f'<td class="num">{t2.get("p95_pt", "&mdash;")}</td>'
                 f'<td class="mono mut">{_esc(", ".join(fonts))}{_esc(detail)}</td>'
+                f'<td><a href="{link}">view</a></td>'
                 "</tr>"
             )
         body.append("</table>")
@@ -220,6 +320,8 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         body.append("<p>No runs yet. Run <code>make run-oracle</code>.</p>")
 
     (out_dir / "index.html").write_text(_page("Overview", "index", "\n".join(body)))
+
+    doc_pages = _build_document_pages(runs_dir, latest, out_dir) if latest else 0
 
     # ---- runs -------------------------------------------------------------
     body = ["<h2>All runs</h2><table><tr><th>Started</th><th>Oracle</th><th>Docs</th>"
@@ -268,13 +370,15 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         "builtAt": datetime.now().isoformat(timespec="seconds"),
         "runs": len(runs),
         "families": len(families),
+        "documents": doc_pages,
     }, indent=2))
 
-    return {"runs": len(runs), "families": len(families), "out": str(out_dir)}
+    return {"runs": len(runs), "families": len(families), "documents": doc_pages, "out": str(out_dir)}
 
 
 def build_from_repo(repo: Path, out: Path | None = None) -> dict:
     out = out or repo / "private" / "site"
-    if out.exists():
-        shutil.rmtree(out)
+    # Do not wipe the output: rendered page images are cached there and
+    # re-rasterising the whole run on every rebuild is slow.
+    out.mkdir(parents=True, exist_ok=True)
     return build(repo / "private" / "runs", repo / "docs" / "families", out)
