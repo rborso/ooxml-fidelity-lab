@@ -84,6 +84,7 @@ On the lab host this runs as `ooxml-lab-site.service`, firewalled to the interna
 | everything `T0` | the reference PDF has no extractable text — run `archive` |
 | `make gate` fails | renderer non-determinism; nothing downstream is meaningful |
 | site shows stale data | the rebuild triggers on request; hit the page again |
+| site lost pages after a code change | the service caches `harness.site` in memory — `systemctl restart ooxml-lab-site` |
 | `OnlyOffice ... ONLYOFFICE_URL` | no Document Server configured; see `render.py` |
 
 ## 9. What not to do
