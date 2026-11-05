@@ -248,19 +248,24 @@ Notes that matter:
 
 Pin every image by digest. A floating tag destroys comparability across runs.
 
+The commands below use **podman**, which is what is installed on the current node
+(rootless, 5.8.2, working). Docker is not present; if you install it, the same OCI images
+and flags apply — just swap the binary. Rootless podman is preferable for a harness that
+runs untrusted documents through a converter.
+
 ```bash
 # LibreOffice — same engine as Collabora Online, simplest batch converter
-docker run --rm -v "$PWD/in:/in" -v "$PWD/out:/out" \
+podman run --rm -v "$PWD/in:/in:Z" -v "$PWD/out:/out:Z" \
   libreoffice:<version>@sha256:<digest> \
   soffice --headless --norestore \
           --convert-to pdf --outdir /out /in/document.docx
 
 # Collabora Online — use when the deployment target is Collabora specifically
 # (different bundled font set and defaults than desktop LibreOffice)
-docker run --rm -d -p 9980:9980 collabora/code:<version>@sha256:<digest>
+podman run --rm -d -p 9980:9980 collabora/code:<version>@sha256:<digest>
 
 # OnlyOffice — heavier; includes its own PG/RabbitMQ/Redis in the all-in-one image
-docker run --rm -d -p 8080:80 onlyoffice/documentserver:<version>@sha256:<digest>
+podman run --rm -d -p 8080:80 onlyoffice/documentserver:<version>@sha256:<digest>
 ```
 
 Each renderer is an adapter behind:

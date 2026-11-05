@@ -19,6 +19,9 @@ Companion: [GOALS.md](./GOALS.md)
    fixed point, not for how many times you can loop it.
 6. **Vendor-neutral.** No suite maintainer owns or gates the score.
 7. **Cluster, then fix.** The unit of work is a failure family, not a document.
+8. **Operator-invoked runs.** There is no CI/CD. Every run is a deliberate script
+   invocation with pinned inputs and a recorded provenance trail, so any published number
+   can be reproduced from the command line by someone reading the run record.
 
 ---
 
@@ -51,7 +54,7 @@ Companion: [GOALS.md](./GOALS.md)
           └─────────┬──────────┘        └─────────┬──────────┘
                     │                             ▼
                     ▼                     ┌────────────────┐
-          ┌────────────────────┐          │ reports / CI   │
+          ┌────────────────────┐          │ reports /      │
           │ minimizer + clus-  │          │ release delta  │
           │ terer + synthesizer│          └────────────────┘
           └─────────┬──────────┘
@@ -170,7 +173,8 @@ workflow. Continuous drift is a structural bug and is reported as such.
 - Per-run report: class scores, fatal-failure count, family list, release delta.
 - Per-family report: minimal repro, construct inventory, diff excerpt, affected count,
   suggested owner.
-- Machine-readable JSON alongside human-readable output so CI can gate on it.
+- Machine-readable JSON alongside human-readable output so a script or the operator can
+  gate on it.
 
 ### 3.12 Run store
 - Append-only records of every run. Never mutate history; supersede.
@@ -220,10 +224,10 @@ Every item must pass, or the run aborts:
 | Orchestration | Python 3.12 | Ecosystem for PDF/XML; fastest to iterate |
 | PDF layout extraction | PyMuPDF | Gives the span/bbox tree directly |
 | Word automation | `pywin32` COM on Windows VM | Only reliable route |
-| Renderer isolation | Docker, digest-pinned | Version reproducibility |
 | Run store | DuckDB or SQLite | Single file, queryable, easy to publish |
-| Report output | JSON + Markdown, static HTML | CI-gateable and shareable |
-| CI | Self-hosted runner with VM access | Word oracle cannot live on hosted CI |
+| Report output | JSON + Markdown, static HTML | script-gateable and shareable |
+| Execution | Operator-invoked `make` targets | No CI/CD: runs must be deliberate and recorded |
+| Containers | podman (OCI images) | Rootless, daemonless; Docker is absent on the current node |
 | XML diff | `lxml` + rsid normalization | Round-trip semantic comparison |
 
 Deliberately avoided: any dependency on a commercial document SDK for the *reference*

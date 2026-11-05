@@ -1,0 +1,36 @@
+OOXML Fidelity Lab
+Copyright 2026 The OOXML Fidelity Lab contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+--------------------------------------------------------------------------------
+Note on scope of the license
+--------------------------------------------------------------------------------
+
+The Apache License above covers the source code, documentation and
+configuration templates in this repository.
+
+It does not, and cannot, cover:
+
+  * Microsoft Word, Windows, or any other proprietary software referenced by
+    the harness. Running the oracle requires a separately licensed copy.
+  * Corpus documents and rendered artifacts derived from third-party or
+    government sources. Those carry their own licence and confidentiality
+    terms and are not distributed in this repository.
+  * Any published corpus or reference artifact, which will be released under
+    a separate data licence (expected: CC-BY-4.0 or CC0-1.0) once the
+    redaction and licensing policy for that material exists.
+
+"Microsoft", "Word" and "Office" are trademarks of Microsoft Corporation.
+This project is not affiliated with, endorsed by, or sponsored by Microsoft.
+Trademarks are used descriptively only.

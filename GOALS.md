@@ -80,7 +80,8 @@ Measured per phase; each phase must be *done* before the next starts.
 - Determinism verified: same document rendered twice yields identical layout trees.
 
 ### Phase 2 — measurement
-- End-to-end pipeline runs unattended over the corpus.
+- End-to-end pipeline runs to completion from a single operator command, with no manual
+  step between ingest and report.
 - Every score is traceable to (corpus item, software version, Word build, harness version).
 - Tiered scores computed for ≥1 open suite against pinned Word.
 
@@ -95,7 +96,8 @@ Measured per phase; each phase must be *done* before the next starts.
 - A published report with per-class scores and known families.
 
 ### Phase 5 — monitoring
-- Runs automatically on each upstream release.
+- A single operator command re-runs the full corpus against a new release. No CI/CD: the
+  run is a script invocation with pinned inputs, not an automated pipeline.
 - Publishes a release delta: what regressed, what improved.
 
 ### Standing qualitative success

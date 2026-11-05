@@ -47,6 +47,7 @@ See [GOALS.md](./GOALS.md) §7 for the honest claim.
 | [GOALS.md](./GOALS.md) | Problem, scope, success criteria, non-goals, risks |
 | [DESIGN.md](./DESIGN.md) | Architecture, components, schema, scoring model, milestones |
 | [SETUP.md](./SETUP.md) | Hardware, VM configuration, Word registry settings, renderer containers |
+| [docs/BOOTSTRAP.md](./docs/BOOTSTRAP.md) | What can be built before the Windows VM exists |
 
 Read in that order.
 
@@ -64,21 +65,26 @@ ooxml-fidelity-lab/
 ├── GOALS.md
 ├── DESIGN.md
 ├── SETUP.md
-├── config/                  # public templates only
+├── LICENSE                  Apache-2.0
+├── NOTICE
+├── Makefile                 operator-driven entry points (no CI)
+├── config/                  public templates only
 │   ├── oracle.example.yaml
 │   ├── renderers.example.yaml
 │   └── tolerances.yaml
 ├── corpus/
 │   ├── manifest.example.yaml
-│   └── public/              # explicitly publishable fixtures only
-├── harness/                 # the implementation (empty at pre-M0)
-└── private/                 # GITIGNORED — nothing here is public
-    ├── config/              # real configs: VM hashes, paths, digests
-    ├── corpus/              # real documents
-    ├── artifacts/           # reference + candidate PDFs, layout trees
-    ├── runs/                # run store and provenance records
-    ├── reports/             # drafts before publication
-    └── vm/                  # VM build material, snapshots, licence notes
+│   └── public/              explicitly publishable fixtures only
+├── docs/
+│   └── BOOTSTRAP.md         what can start before Windows exists
+├── harness/                 the implementation (empty at pre-M0)
+└── private/                 GITIGNORED — nothing here is public
+    ├── config/              real configs: VM hashes, paths, digests
+    ├── corpus/              real documents
+    ├── artifacts/           reference + candidate PDFs, layout trees
+    ├── runs/                run store and provenance records
+    ├── reports/             drafts before publication
+    └── vm/                  VM build material, snapshots, licence notes
 ```
 
 ### Why the split is strict
@@ -104,6 +110,27 @@ See SETUP.md §10. Do not build the framework before that gate is green.
 
 ---
 
+## Execution model: no CI/CD
+
+There is deliberately **no continuous integration and no deployment pipeline** in this
+project. No GitHub Actions, no webhooks, no scheduled workflows.
+
+Every run is a deliberate, operator-invoked script with pinned inputs and a recorded
+provenance trail. The entry points are defined in the [`Makefile`](./Makefile):
+
+```
+make gate     # determinism go/no-go (SETUP.md §10)
+make run      # corpus sweep through oracle + renderers
+make report   # render the latest run
+make check    # validate the corpus manifest
+make test     # the harness's own tests
+```
+
+A scheduled run is still a script — if you want one, it is a timer invoking `make run` on
+the machine that owns the VM, not a service in the repository. This keeps the blast radius
+small, keeps credentials out of a public repo, and means a result can always be reproduced
+from the command line by someone reading the run record.
+
 ## Disclaimer
 
 Running the oracle requires a licensed Microsoft Word installation. The harness itself and
@@ -120,6 +147,15 @@ the same file. Any published score must name the reference build it was measured
 
 ## License
 
-Not yet chosen. Intended to be a permissive license suitable for public-sector adoption
-(Apache-2.0 or MPL-2.0), consistent with the veraPDF model. Until a LICENSE file exists,
-all rights are reserved.
+[Apache License 2.0](./LICENSE) — see [NOTICE](./NOTICE) for attribution and scope.
+
+Chosen for three reasons: the express patent grant in §3 (relevant to any OOXML work), the
+absence of copyleft friction for public-sector procurement and commercial adoption, and
+compatibility with the veraPDF precedent this project follows.
+
+The licence covers code, documentation and configuration templates. It cannot cover
+Microsoft Word, corpus documents, or rendered artifacts; those carry their own terms. Any
+published corpus or reference artifact will get a separate data licence (expected
+CC-BY-4.0 or CC0-1.0) once the redaction and licensing policy for that material exists.
+
+Contributions are accepted under the same licence (§5).
