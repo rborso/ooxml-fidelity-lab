@@ -106,22 +106,32 @@ installed and activated. It disables Windows Update, so anything installed after
 never patched.
 
 ```powershell
-# 1. Fetch. The repo is public. Unblock-File is required: downloads carry the
-#    Mark-of-the-Web and are blocked without it.
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/rborso/ooxml-fidelity-lab/main/scripts/windows/oracle-harden.ps1" `
-  -OutFile "$env:USERPROFILE\oracle-harden.ps1"
-Unblock-File "$env:USERPROFILE\oracle-harden.ps1"
+# 1. Fetch to a fixed path. curl.exe ships with Windows 11 and writes bytes
+#    verbatim. Unblock-File is required: downloads carry the Mark-of-the-Web.
+$harden = "$env:USERPROFILE\oracle-harden.ps1"
+curl.exe -L -o $harden https://raw.githubusercontent.com/rborso/ooxml-fidelity-lab/main/scripts/windows/oracle-harden.ps1
+Unblock-File $harden
 
-# 2. Preview — a real dry run, every action honours ShouldProcess
-powershell -ExecutionPolicy Bypass -File .\oracle-harden.ps1 -WhatIf
+# 2. Integrity check. Must print nothing. A non-ASCII byte breaks PowerShell 5.1,
+#    which reads a BOM-less file as ANSI and treats typographic quotes as string
+#    delimiters, producing parse errors far from the offending character.
+Select-String -Path $harden -Pattern '[^\x00-\x7F]'
 
-# 3. Apply (drop the credentials if auto-logon is configured another way)
-powershell -ExecutionPolicy Bypass -File .\oracle-harden.ps1 `
+# 3. Preview - a real dry run, every action honours ShouldProcess
+powershell -ExecutionPolicy Bypass -File $harden -WhatIf
+
+# 4. Apply (drop the credentials if auto-logon is configured another way)
+powershell -ExecutionPolicy Bypass -File $harden `
   -AutoLoginUser <user> -AutoLoginPassword '<password>' -ConfigureOffice
 
-# 4. Reboot (Fast Startup and power changes need it), then assert
-powershell -ExecutionPolicy Bypass -File .\oracle-harden.ps1 -Verify
+# 5. Reboot (Fast Startup and power changes need it), then assert
+Get-FileHash $harden -Algorithm SHA256
+powershell -ExecutionPolicy Bypass -File $harden -Verify
 ```
+
+**Always invoke with the full path.** `.\oracle-harden.ps1` only resolves if the current
+directory happens to be `$env:USERPROFILE`; from anywhere else it fails, and it is easy to
+end up running a different copy than the one you just downloaded.
 
 Run it **in the console or RDP session, elevated, as the account that will auto-logon**.
 UAC elevation preserves the user, so HKCU settings land in the right profile; "run as a
