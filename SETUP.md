@@ -113,6 +113,11 @@ printer's metrics), Windows Installer, COM/RPC, .NET, the font store, or the Tru
 Location policy the automation depends on. Those invariants are re-checked at the end of
 every run and anything accidentally disabled is restored.
 
+It **does** pin: Fast Startup and hibernation off, High Performance power plan with every
+timeout at zero, CPU minimum state 100%, Power Throttling off, PCIe and USB selective
+suspend off, Windows 11 Energy Saver off, screen saver and lock screen disabled, no
+password prompt on wake, and best-performance visuals.
+
 `-Verify` changes nothing and exits non-zero on a failed invariant — run it before taking
 the snapshot. Every run writes `C:\oracle-harden\state.json` (OS build, Word version, font
 count, full change list) which belongs in the image record.

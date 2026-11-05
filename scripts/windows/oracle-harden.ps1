@@ -155,6 +155,26 @@ function Disable-TaskPath {
         }
     }
 }
+function Invoke-PowerCfg {
+    param([string[]]$Arguments, [string]$Label)
+    $out = & powercfg @Arguments 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Log "ok    power: $Label" 'green'
+        $script:Changes.Add("powercfg $($Arguments -join ' ')")
+        return $true
+    }
+    # Aliases vary by build; an unsupported one is a skip, not a failure.
+    Write-Log "skip  power: $Label (unsupported on this build)" 'gray'
+    return $false
+}
+
+function Get-PowerValue {
+    param([string]$Sub, [string]$Setting)
+    $out = & powercfg /query SCHEME_CURRENT $Sub $Setting 2>$null
+    $m = $out | Select-String -Pattern 'Current AC Power Setting Index:\s*(0x[0-9a-fA-F]+)'
+    if ($m) { return [Convert]::ToInt32($m.Matches[0].Groups[1].Value, 16) }
+    return $null
+}
 #endregion
 
 # Packages we never remove, whatever else matches.
@@ -207,6 +227,18 @@ if ($Verify) {
            Test = { Test-Path $WorkDir } }
         @{ Name = 'Fast Startup disabled'
            Test = { (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled -eq 0 } }
+        @{ Name = 'Hibernation disabled (no hiberfil.sys)'
+           Test = { -not (Test-Path "$env:SystemDrive\hiberfil.sys") } }
+        @{ Name = 'Power plan is High performance'
+           Test = { (powercfg /getactivescheme) -match '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' } }
+        @{ Name = 'Display sleep disabled'
+           Test = { (Get-PowerValue SUB_VIDEO VIDEOIDLE) -eq 0 } }
+        @{ Name = 'System sleep disabled'
+           Test = { (Get-PowerValue SUB_SLEEP STANDBYIDLE) -eq 0 } }
+        @{ Name = 'Screen saver disabled'
+           Test = { (Get-ItemProperty 'HKCU:\Control Panel\Desktop' -Name ScreenSaveActive -ErrorAction SilentlyContinue).ScreenSaveActive -eq '0' } }
+        @{ Name = 'No password prompt on wake'
+           Test = { $v = Get-PowerValue SUB_NONE CONSOLELOCK; ($null -eq $v) -or ($v -eq 0) } }
     )
 
     $office = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration' -ErrorAction SilentlyContinue).ProductReleaseIds
@@ -347,16 +379,32 @@ if (-not $SkipUpdates) {
 #region determinism
 Write-Section 'Determinism: power, session, filesystem'
 
-powercfg /h off 2>$null | Out-Null
+# Fast Startup is the one that actually bites: with it enabled, "shutdown" is a
+# partial hibernate and the next boot inherits state. Two independent switches,
+# because either can be re-enabled on its own.
+Invoke-PowerCfg @('/h', 'off') 'hibernation off (also removes hiberfil.sys)'
 Set-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' 'HiberbootEnabled' 0
-Set-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' 'FastStartupEnabled' 0
+Set-RegValue 'HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' 'PowerThrottlingOff' 1
 
-powercfg /setactive SCHEME_MIN 2>$null | Out-Null      # High performance
-powercfg /change standby-timeout-ac 0 2>$null | Out-Null
-powercfg /change hibernate-timeout-ac 0 2>$null | Out-Null
-powercfg /change disk-timeout-ac 0 2>$null | Out-Null
-powercfg /change monitor-timeout-ac 0 2>$null | Out-Null
-Write-Log "ok    power plan pinned, timeouts disabled" 'green'
+# Power saver -> High performance, and no idle transitions of any kind.
+Invoke-PowerCfg @('/setactive', 'SCHEME_MIN') 'power plan = High performance'
+Invoke-PowerCfg @('/change', 'standby-timeout-ac', '0')  'sleep timeout 0 (AC)'
+Invoke-PowerCfg @('/change', 'standby-timeout-dc', '0')  'sleep timeout 0 (DC)'
+Invoke-PowerCfg @('/change', 'hibernate-timeout-ac', '0') 'hibernate timeout 0'
+Invoke-PowerCfg @('/change', 'disk-timeout-ac', '0')     'disk timeout 0'
+Invoke-PowerCfg @('/change', 'monitor-timeout-ac', '0')  'display timeout 0 (AC)'
+Invoke-PowerCfg @('/change', 'monitor-timeout-dc', '0')  'display timeout 0 (DC)'
+
+# Never prompt for a password on wake — a locked session can stall UI automation.
+Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_NONE', 'CONSOLELOCK', '0') 'no password on wake'
+# Keep the CPU at a fixed state so timing is not frequency-dependent.
+Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PROCESSOR', 'PROCTHROTTLEMIN', '100') 'CPU minimum state 100%'
+Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_PCIEXPRESS', 'ASPM', '0') 'PCIe power management off'
+Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT',
+    '2a737441-1930-4402-8d77-b2bebba308a3', '48e6b7a6-50f5-4782-a5d4-53bb8f07e226', '0') 'USB selective suspend off'
+# Windows 11 24H2 "Energy Saver" is separate from the power plan and can throttle.
+Invoke-PowerCfg @('/setacvalueindex', 'SCHEME_CURRENT', 'SUB_ENERGYSAVER', 'ESBATTTHRESHOLD', '0') 'energy saver off'
+Invoke-PowerCfg @('/setactive', 'SCHEME_CURRENT') 'apply power settings'
 
 if (-not (Test-Path $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null }
 $excl = (Get-MpPreference).ExclusionPath
@@ -375,10 +423,22 @@ Set-RegValue 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Word\Security\ProtectedView' 
 Set-RegValue 'HKCU:\SOFTWARE\Microsoft\Office\16.0\Word\Security\ProtectedView' 'DisableAttachmentsInPV' 1
 
 if (-not $SkipSession) {
-    Set-RegValue 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' 'NoLockScreen' 1
+    # Screen saver: policy keys plus the real per-user keys, because the policy
+    # alone does not clear an already-configured saver.
     Set-RegValue 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Control Panel\Desktop' 'ScreenSaveActive' '0' 'String'
     Set-RegValue 'HKCU:\SOFTWARE\Policies\Microsoft\Windows\Control Panel\Desktop' 'ScreenSaverIsSecure' '0' 'String'
+    Set-RegValue 'HKCU:\Control Panel\Desktop' 'ScreenSaveActive' '0' 'String'
+    Set-RegValue 'HKCU:\Control Panel\Desktop' 'ScreenSaveTimeOut' '0' 'String'
+    Set-RegValue 'HKCU:\Control Panel\Desktop' 'ScreenSaverIsSecure' '0' 'String'
+    Set-RegValue 'HKCU:\Control Panel\Desktop' 'SCRNSAVE.EXE' '' 'String'
+
+    # Lock screen and automatic lock
+    Set-RegValue 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization' 'NoLockScreen' 1
     Set-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' 'InactivityTimeoutSecs' 0
+    Set-RegValue 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' 'EnableDynamicLock' 0
+
+    # Best-performance visuals: less repaint noise during automation.
+    Set-RegValue 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' 'VisualFXSetting' 2
 
     if ($AutoLoginUser -and $AutoLoginPassword) {
         Set-RegValue 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon' 'AutoAdminLogon' '1' 'String'
