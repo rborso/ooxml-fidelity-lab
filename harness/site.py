@@ -28,6 +28,7 @@ TIER_CLASS = {
     "T2": "warn",
     "ORDER": "warn",
     "FLOW": "warn",
+    "FIELD": "warn",
     "T1": "bad",
     "T0": "fatal",
     "ORACLE-FAIL": "fatal",

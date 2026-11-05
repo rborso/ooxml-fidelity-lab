@@ -138,6 +138,40 @@ def test_missing_word_is_data_loss():
     assert res["t0"]["pass"] is False
 
 
+def test_allow_extra_downgrades_to_field():
+    """A declared, expected divergence is recorded, not re-triaged."""
+    res = compare.compare(
+        make(["alpha"]),
+        make(["alpha", "beta"]),
+        {"allow_extra": True},
+    )
+    assert res["tier"] == "FIELD"
+    assert res["t0"]["pass"] is False
+
+
+def test_extra_without_tolerance_is_t0():
+    res = compare.compare(make(["alpha"]), make(["alpha", "beta"]))
+    assert res["tier"] == "T0"
+
+
+def test_allow_missing_does_not_cover_extra():
+    res = compare.compare(
+        make(["alpha", "beta"]),
+        make(["alpha", "gamma"]),
+        {"allow_missing": True},
+    )
+    assert res["tier"] == "T0"
+
+
+def test_page_count_mismatch_is_never_tolerated():
+    res = compare.compare(
+        make_pages([["alpha"]]),
+        make_pages([["alpha"], ["beta"]]),
+        {"allow_extra": True, "allow_missing": True},
+    )
+    assert res["tier"] == "T0"
+
+
 def test_line_count_change_fails_t1():
     res = compare.compare(make(["alpha"], line_count=2), make(["alpha"], line_count=3))
     assert res["tier"] == "T1"

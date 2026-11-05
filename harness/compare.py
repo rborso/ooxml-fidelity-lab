@@ -121,6 +121,8 @@ def _t0(reference: dict, candidate: dict) -> dict:
 
     return {
         "pass": not content,
+        "missing_count": sum(doc_missing.values()),
+        "extra_count": sum(doc_extra.values()),
         "content_issues": content[:10],
         "flow_issues": flow[:10],
         "flow_differs": bool(flow),
@@ -180,6 +182,19 @@ def compare(reference: dict, candidate: dict, tolerances: dict | None = None) ->
 
     t0 = _t0(reference, candidate)
     if not t0["pass"]:
+        # A document may declare that one direction of difference is expected -
+        # a regenerated TOC adds text Word never painted, and re-triaging that
+        # on every run is noise, not measurement.
+        allow_missing = bool(tol.get("allow_missing"))
+        allow_extra = bool(tol.get("allow_extra"))
+        page_count_differs = any("page count" in i for i in t0["content_issues"])
+        permitted = (
+            (t0["missing_count"] == 0 or allow_missing)
+            and (t0["extra_count"] == 0 or allow_extra)
+            and not page_count_differs
+        )
+        if permitted:
+            return {"t0": t0, "t1": None, "t2": None, "score": 0.8, "tier": "FIELD"}
         return {"t0": t0, "t1": None, "t2": None, "score": 0.0, "tier": "T0"}
 
     t1 = _t1(reference, candidate)

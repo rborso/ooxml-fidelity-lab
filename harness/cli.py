@@ -34,7 +34,7 @@ def _stamp() -> str:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    return corpus_mod.validate(Path(args.manifest))
+    return corpus_mod.validate(Path(args.manifest), strict=args.strict)
 
 
 def cmd_gate(args: argparse.Namespace) -> int:
@@ -83,6 +83,17 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.limit:
         docs, ids = docs[: args.limit], ids[: args.limit]
+    if args.only:
+        wanted = {s.strip() for s in args.only.split(",") if s.strip()}
+        pairs = [(d, i) for d, i in zip(docs, ids) if i in wanted]
+        docs = [p[0] for p in pairs]
+        ids = [p[1] for p in pairs]
+
+    overrides = (
+        corpus_mod.load_overrides(Path(args.corpus).parent / "overrides.yaml")
+        if args.corpus
+        else {}
+    )
 
     print(f"corpus:   {corpus_label}")
     print(f"oracle:   {args.oracle}")
@@ -117,7 +128,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         cand_pdf = render.render_collabora(docx, work / "cand" / doc_id)
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
-        res = cmp.compare(ref, cand, tol)
+        res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
         results.append({"id": doc_id, "tier": res["tier"], "score": res["score"], **res})
         print(f"{res['tier']:9s} {res['score']:.2f}  {doc_id}")
 
@@ -186,6 +197,70 @@ def _report(payload: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def cmd_crosscheck(args: argparse.Namespace) -> int:
+    from .crosscheck import crosscheck
+
+    rows, summary = crosscheck(Path(args.run).resolve(), threshold=args.threshold)
+    if rows and rows[0].get("error"):
+        print(rows[0]["error"], file=sys.stderr)
+        return 2
+    for row in rows:
+        if row.get("status") not in (None, "ok"):
+            print(f"  {row['status']:10s} {row['agreement']:.4f}  {row['pdf']}")
+    print(
+        "documents={documents} median={median:.4f} min={min:.4f} "
+        "outliers={outliers} threshold={threshold}".format(**summary)
+    )
+    return 0 if summary["ok"] else 1
+
+
+def cmd_cluster(args: argparse.Namespace) -> int:
+    from .cluster import cluster
+
+    run_dir = Path(args.run).resolve()
+    data = json.loads((run_dir / "results.json").read_text())
+    paths: dict[str, Path] = {}
+    if args.corpus:
+        _, items = corpus_mod.load(Path(args.corpus))
+        paths = {item.id: item.path for item in items}
+
+    docs = []
+    for doc in data["documents"]:
+        path = paths.get(doc["id"])
+        if path and path.exists():
+            docs.append((doc["id"], path, doc["tier"]))
+
+    groups = cluster(docs)
+    for group in groups:
+        print(f"{group['size']:3d}  {group['key']}  {group['tier']:9s}  {group['description']}")
+        print("      " + ", ".join(group["documents"][:8]))
+    (run_dir / "clusters.json").write_text(json.dumps(groups, indent=2))
+    print(f"clusters: {len(groups)} over {len(docs)} documents -> {run_dir / 'clusters.json'}")
+    return 0
+
+
+def cmd_minimize(args: argparse.Namespace) -> int:
+    import shlex
+    import subprocess
+
+    from .minimize import minimize_docx
+
+    command = shlex.split(args.predicate_command)
+
+    def predicate(candidate: Path) -> bool:
+        proc = subprocess.run([*command, str(candidate)], capture_output=True)
+        return proc.returncode == 0
+
+    info = minimize_docx(
+        Path(args.doc).resolve(),
+        Path(args.out).resolve(),
+        predicate,
+        max_candidates=args.max_candidates,
+    )
+    print(json.dumps(info, indent=2))
+    return 0
+
+
 def cmd_fetch(args: argparse.Namespace) -> int:
     from .fetch import fetch, to_yaml
 
@@ -228,6 +303,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     c = sub.add_parser("check", help="validate the corpus manifest")
     c.add_argument("--manifest", required=True)
+    c.add_argument("--strict", action="store_true", help="missing licence is an error")
     c.set_defaults(func=cmd_check)
 
     g = sub.add_parser("gate", help="oracle determinism gate (render twice, compare)")
@@ -239,6 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--corpus", default=None, help="manifest; omit to use synthetic docs")
     r.add_argument("--out", default="private/runs")
     r.add_argument("--limit", type=int, default=0)
+    r.add_argument("--only", default="", help="comma-separated document ids")
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
     r.add_argument("--domain", default="win11-0")
@@ -255,9 +332,31 @@ def build_parser() -> argparse.ArgumentParser:
     site.add_argument("--out", default=None)
     site.set_defaults(func=cmd_site)
 
+    cx = sub.add_parser("crosscheck", help="compare extractor tokens with pdftotext")
+    cx.add_argument("--run", required=True)
+    cx.add_argument("--threshold", type=float, default=0.99)
+    cx.set_defaults(func=cmd_crosscheck)
+
+    cl = sub.add_parser("cluster", help="group failing documents by construct signature")
+    cl.add_argument("--run", required=True)
+    cl.add_argument("--corpus", default="private/corpus/manifest.yaml")
+    cl.set_defaults(func=cmd_cluster)
+
+    mn = sub.add_parser("minimize", help="ddmin a document against a failure predicate")
+    mn.add_argument("--doc", required=True)
+    mn.add_argument("--out", required=True)
+    mn.add_argument(
+        "--predicate-command",
+        required=True,
+        help="shell command run with the candidate path appended; exit 0 = still failing",
+    )
+    mn.add_argument("--max-candidates", type=int, default=400)
+    mn.set_defaults(func=cmd_minimize)
+
     f = sub.add_parser("fetch", help="download DOCX attachments from a bug tracker")
     f.add_argument("--out", default="private/corpus/bugzilla")
     f.add_argument("--limit", type=int, default=25)
+    f.add_argument("--pages", type=int, default=1, help="search pages to walk")
     f.add_argument("--query", default="docx")
     f.add_argument("--base", default="https://bugs.documentfoundation.org")
     f.add_argument("--delay", type=float, default=0.4)
