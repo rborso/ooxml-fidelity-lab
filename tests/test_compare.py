@@ -61,6 +61,27 @@ def test_font_substitution_reported():
     assert res["t2"]["fonts_extra"] == ["NotoSerif-Regular"]
 
 
+def test_metric_compatible_substitution_passes():
+    """Calibri -> Carlito is the desired behaviour, not a finding."""
+    res = compare.compare(
+        make(["alpha"], fonts=("Calibri",)),
+        make(["alpha"], fonts=("Carlito",)),
+    )
+    assert res["tier"] == "PASS"
+    assert res["t2"]["fonts_expected"] == {"Calibri": "Carlito"}
+    assert res["t2"]["fonts_unexpected"] == {}
+
+
+def test_metric_compatible_bold_variant_passes():
+    """Style suffixes must not defeat the family match."""
+    res = compare.compare(
+        make(["alpha"], fonts=("Calibri-Bold",)),
+        make(["alpha"], fonts=("Carlito-Bold",)),
+    )
+    assert res["tier"] == "PASS"
+    assert res["t2"]["fonts_unexpected"] == {}
+
+
 def test_line_count_change_fails_t1():
     res = compare.compare(make(["alpha"], line_count=2), make(["alpha"], line_count=3))
     assert res["tier"] == "T1"

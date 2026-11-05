@@ -1,7 +1,10 @@
 """Generate minimal single-construct DOCX files.
 
-Deliberately dependency-free: a DOCX is a zip of XML, and constructing it by
-hand keeps the generated document exactly as small as the construct under test.
+Dependency-free: a DOCX is a zip of XML. But "minimal" must not mean
+"degenerate" — a document without document defaults and without an explicit
+page size lets each engine invent its own, and every comparison then measures
+defaults rather than the construct under test. These files therefore carry a
+styles part with Word's defaults and an explicit A4 section.
 """
 
 from __future__ import annotations
@@ -14,12 +17,39 @@ CONTENT_TYPES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 <Default Extension="xml" ContentType="application/xml"/>
 <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 </Types>"""
 
-RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+PACKAGE_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
 </Relationships>"""
+
+DOCUMENT_RELS = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>"""
+
+# Word's own defaults: Calibri 11pt, 8pt space after, 1.08 line spacing.
+STYLES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:docDefaults>
+<w:rPrDefault><w:rPr>
+<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/>
+<w:sz w:val="22"/><w:szCs w:val="22"/>
+<w:lang w:val="en-GB"/>
+</w:rPr></w:rPrDefault>
+<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault>
+</w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>
+</w:styles>"""
+
+# Explicit A4, 1 inch margins. Without this Word defaults to Letter and
+# LibreOffice to A4, and every line break then differs for the wrong reason.
+SECT = """<w:sectPr>
+<w:pgSz w:w="11906" w:h="16838"/>
+<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>
+</w:sectPr>"""
 
 NS = (
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
@@ -41,11 +71,11 @@ def _para(text: str, *, font: str | None = None, bold: bool = False, size: int |
     if size:
         rpr += f'<w:sz w:val="{size}"/><w:szCs w:val="{size}"/>'
     rpr = f"<w:rPr>{rpr}</w:rPr>" if rpr else ""
-    return f"<w:p><w:r>{rpr}<w:t xml:space=\"preserve\">{text}</w:t></w:r></w:p>"
+    return f'<w:p><w:r>{rpr}<w:t xml:space="preserve">{text}</w:t></w:r></w:p>'
 
 
 def _table(rows: list[list[str]]) -> str:
-    grid = "".join("<w:gridCol w:w=\"2400\"/>" for _ in rows[0])
+    grid = "".join('<w:gridCol w:w="2400"/>' for _ in rows[0])
     body = ""
     for row in rows:
         cells = "".join(
@@ -55,11 +85,11 @@ def _table(rows: list[list[str]]) -> str:
         )
         body += f"<w:tr>{cells}</w:tr>"
     return (
-        "<w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>"
+        '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>'
         "<w:tblBorders>"
-        "<w:top w:val=\"single\"/><w:left w:val=\"single\"/>"
-        "<w:bottom w:val=\"single\"/><w:right w:val=\"single\"/>"
-        "<w:insideH w:val=\"single\"/><w:insideV w:val=\"single\"/>"
+        '<w:top w:val="single"/><w:left w:val="single"/>'
+        '<w:bottom w:val="single"/><w:right w:val="single"/>'
+        '<w:insideH w:val="single"/><w:insideV w:val="single"/>'
         "</w:tblBorders></w:tblPr>"
         f"<w:tblGrid>{grid}</w:tblGrid>{body}</w:tbl>"
     )
@@ -83,15 +113,14 @@ CONSTRUCTS: dict[str, list[str]] = {
 }
 
 
-def build(construct: str) -> bytes:
+def build(construct: str) -> str:
     if construct not in CONSTRUCTS:
         raise KeyError(f"unknown construct {construct!r}; known: {sorted(CONSTRUCTS)}")
     body = "".join(CONSTRUCTS[construct])
-    document = (
+    return (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f"<w:document {NS}><w:body>{body}<w:sectPr/></w:body></w:document>"
+        f"<w:document {NS}><w:body>{body}{SECT}</w:body></w:document>"
     )
-    return document.encode()
 
 
 def write(construct: str, path: Path) -> Path:
@@ -99,8 +128,10 @@ def write(construct: str, path: Path) -> Path:
     document = build(construct)
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
-        z.writestr("_rels/.rels", RELS)
+        z.writestr("_rels/.rels", PACKAGE_RELS)
         z.writestr("word/document.xml", document)
+        z.writestr("word/_rels/document.xml.rels", DOCUMENT_RELS)
+        z.writestr("word/styles.xml", STYLES)
     return path
 
 

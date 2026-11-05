@@ -16,6 +16,9 @@ A paragraph requesting **Georgia** renders with different character advances, so
 breaks move and the page may repaginate. Text content is unchanged — T0 passes, so this is
 not data loss.
 
+Measured against Word `16.0.19127.20860` on the `georgia` synthetic case: **T1**, median
+word displacement **24.52 pt**, line 1 ends `keeps` in Word and `running` in Collabora.
+
 ## Mechanism
 
 **Confirmed.** The Collabora Online image bundles Carlito (Calibri metric clone), Caladea
@@ -83,3 +86,4 @@ regressions.
 | Run | Renderer digest | Oracle build | Result |
 |---|---|---|---|
 | smoke-001 | `sha256:808410e7…` (26.04.5.2) | none — no oracle yet | open |
+| run-20261105T161944Z | `sha256:808410e7…` (26.04.5.2) | 16.0.19127.20860 | open (T1, 24.52 pt) |

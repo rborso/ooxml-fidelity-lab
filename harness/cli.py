@@ -84,14 +84,37 @@ def cmd_run(args: argparse.Namespace) -> int:
         docs, ids = docs[: args.limit], ids[: args.limit]
 
     print(f"corpus:   {corpus_label}")
+    print(f"oracle:   {args.oracle}")
     print(f"renderer: {render.COLLABORA_IMAGE.split('@')[0]}")
     print(f"output:   {work}\n")
 
+    refs: dict[str, Path] = {}
+    if args.oracle == "windows":
+        from .oracle import OracleError, WindowsOracle
+
+        vo = WindowsOracle(domain=args.domain, timeout=args.boot_timeout)
+        try:
+            refs = vo.render_batch(dict(zip(ids, docs)), work / "ref")
+        except OracleError as exc:
+            print(f"oracle failed: {exc}", file=sys.stderr)
+            return 2
+        oracle_results = vo.results(work / "ref")
+    else:
+        oracle_results = {}
+        for docx, doc_id in zip(docs, ids):
+            refs[doc_id] = render.stub_oracle(docx, work / "ref" / doc_id)
+
     results = []
     for docx, doc_id in zip(docs, ids):
-        ref_pdf = render.stub_oracle(docx, work / "ref" / doc_id)
+        if doc_id not in refs:
+            reason = (oracle_results.get(doc_id) or {}).get("error") or "no reference PDF"
+            results.append({"id": doc_id, "tier": "ORACLE-FAIL", "score": 0.0,
+                            "t0": None, "t1": None, "t2": None, "error": reason})
+            print(f"{'ORACLE':9s} 0.00  {doc_id}  ({reason})")
+            continue
+
         cand_pdf = render.render_collabora(docx, work / "cand" / doc_id)
-        ref = extract.extract_layout(ref_pdf)
+        ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, tol)
         results.append({"id": doc_id, "tier": res["tier"], "score": res["score"], **res})
@@ -106,7 +129,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     payload = {
         "started": _stamp(),
         "corpus": corpus_label,
-        "oracle": "stub (collabora engine — not a fidelity reference)",
+        "oracle": (
+            "stub (collabora engine - not a fidelity reference)"
+            if args.oracle == "stub"
+            else f"windows:{args.domain}"
+        ),
         "renderer": render.COLLABORA_IMAGE,
         "tolerances": tol,
         "summary": summary,
@@ -132,9 +159,14 @@ def _report(payload: dict) -> str:
         f"- mean score: {payload['summary']['mean_score']}",
         f"- tiers: {payload['summary']['by_tier']}",
         "",
-        "> The oracle is a stub. Deltas here measure determinism, not fidelity",
-        "> against Microsoft Word.",
-        "",
+    ]
+    if payload["oracle"].startswith("stub"):
+        lines += [
+            "> The oracle is a stub. Deltas here measure determinism, not fidelity",
+            "> against Microsoft Word.",
+            "",
+        ]
+    lines += [
         "| Document | Tier | Score | median pt | p95 pt | fonts missing |",
         "|---|---|---|---|---|---|",
     ]
@@ -182,6 +214,9 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--out", default="private/runs")
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--tolerances", default="config/tolerances.yaml")
+    r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
+    r.add_argument("--domain", default="win11-0")
+    r.add_argument("--boot-timeout", type=int, default=900)
     r.set_defaults(func=cmd_run)
 
     rep = sub.add_parser("report", help="re-render a report from results.json")

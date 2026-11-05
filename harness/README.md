@@ -7,6 +7,7 @@ Implementation of the pipeline described in [DESIGN.md](../DESIGN.md). Empty at 
 | Module | Responsibility |
 |---|---|
 | `oracle/` | VM driver, job queue over the shared folder, determinism checks |
+| `oracle.py` | host-side batch driver: stage, boot, wait for power-off, collect |
 | `renderers/` | Adapters: `soffice`, `coolwsd`, `onlyoffice`, `x2t` |
 | `extract/` | PDF → normalized layout tree (spans, bboxes, geometry) |
 | `compare/` | T0–T3 comparators, font substitution report |

@@ -38,6 +38,10 @@ gate:
 run:
 	$(PYTHON) -m harness.cli run --out private/runs
 
+## Same, but with the real Windows oracle (boots the VM, renders offline)
+run-oracle:
+	$(PYTHON) -m harness.cli run --oracle windows --out private/runs
+
 ## Re-render the report for the most recent run
 report:
 	@latest=$$(ls -dt private/runs/run-* 2>/dev/null | head -1); \
