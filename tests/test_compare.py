@@ -82,6 +82,48 @@ def test_metric_compatible_bold_variant_passes():
     assert res["t2"]["fonts_unexpected"] == {}
 
 
+def make_pages(pages, *, fonts=("Carlito",)):
+    return {
+        "page_count": len(pages),
+        "pages": [
+            {
+                "number": i,
+                "width": 595.0,
+                "height": 842.0,
+                "words": [
+                    {"t": t, "b": [100.0 + j * 30, 100.0, 120.0 + j * 30, 112.0], "bl": 0, "ln": 0}
+                    for j, t in enumerate(tokens)
+                ],
+                "fonts": list(fonts),
+                "line_count": 1,
+            }
+            for i, tokens in enumerate(pages)
+        ],
+        "fonts": list(fonts),
+        "producer": "test",
+    }
+
+
+def test_same_words_on_a_different_page_is_flow():
+    """Pagination moved, nothing was lost."""
+    res = compare.compare(
+        make_pages([["alpha"], ["beta"]]),
+        make_pages([["alpha", "beta"], []]),
+    )
+    assert res["tier"] == "FLOW"
+    assert res["t0"]["pass"] is True
+    assert res["t0"]["flow_differs"] is True
+
+
+def test_word_missing_from_the_document_is_content_loss():
+    res = compare.compare(
+        make_pages([["alpha"], ["beta"]]),
+        make_pages([["alpha"], []]),
+    )
+    assert res["tier"] == "T0"
+    assert res["t0"]["pass"] is False
+
+
 def test_reordered_content_is_order_not_data_loss():
     """Same words in a different order is a reading-order finding, not loss."""
     res = compare.compare(make(["alpha", "beta"]), make(["beta", "alpha"]))

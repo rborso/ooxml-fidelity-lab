@@ -73,46 +73,60 @@ def classify_fonts(missing: list[str], extra: list[str]) -> tuple[dict, dict]:
 
 
 def _t0(reference: dict, candidate: dict) -> dict:
-    """Content presence first, then content order.
+    """Three separate questions, three separate answers.
 
-    Losing a word is fatal. Visiting the same words in a different order is a
-    reading-order difference: real, worth reporting, but not data loss. Scoring
-    it as fatal buries the findings that actually matter.
+    content  - is any word missing from the document entirely? fatal.
+    flow     - every word present, but on a different page. pagination.
+    order    - every word present on the same page, different sequence.
+               text boxes and columns.
+
+    Treating all three as "data loss" made the first real corpus run useless:
+    eight documents, five of them red, most of them not actually losing
+    anything.
     """
-    content: list[str] = []
-    order: list[str] = []
+    ref_doc = Counter(t for p in reference["pages"] for t in page_tokens(p))
+    cand_doc = Counter(t for p in candidate["pages"] for t in page_tokens(p))
 
+    content: list[str] = []
     if len(reference["pages"]) != len(candidate["pages"]):
         content.append(
             f"page count {len(candidate['pages'])} != {len(reference['pages'])}"
         )
+    doc_missing = ref_doc - cand_doc
+    doc_extra = cand_doc - ref_doc
+    if doc_missing or doc_extra:
+        bits = []
+        if doc_missing:
+            names = ", ".join(repr(w) for w in list(doc_missing)[:4])
+            bits.append(f"missing {sum(doc_missing.values())} ({names})")
+        if doc_extra:
+            names = ", ".join(repr(w) for w in list(doc_extra)[:4])
+            bits.append(f"extra {sum(doc_extra.values())} ({names})")
+        content.append("document: " + ", ".join(bits))
 
-    for rp, cp in zip(reference["pages"], candidate["pages"]):
-        rt, ct = page_tokens(rp), page_tokens(cp)
-        rcount, ccount = Counter(rt), Counter(ct)
-        if rcount != ccount:
-            missing = rcount - ccount
-            extra = ccount - rcount
-            bits = []
-            if missing:
-                names = ", ".join(repr(w) for w in list(missing)[:3])
-                bits.append(f"missing {sum(missing.values())} ({names})")
-            if extra:
-                names = ", ".join(repr(w) for w in list(extra)[:3])
-                bits.append(f"extra {sum(extra.values())} ({names})")
-            content.append(f"page {rp['number']}: {', '.join(bits)}")
-        elif rt != ct:
-            first = next(i for i, (a, b) in enumerate(zip(rt, ct)) if a != b)
-            order.append(
-                f"page {rp['number']} word {first}: {ct[first]!r} != {rt[first]!r}"
-            )
+    flow_pages: list[int] = []
+    order: list[str] = []
+    if not content:
+        for rp, cp in zip(reference["pages"], candidate["pages"]):
+            rt, ct = page_tokens(rp), page_tokens(cp)
+            if Counter(rt) != Counter(ct):
+                flow_pages.append(rp["number"])
+            elif rt != ct:
+                first = next(i for i, (a, b) in enumerate(zip(rt, ct)) if a != b)
+                order.append(
+                    f"page {rp['number']} word {first}: {ct[first]!r} != {rt[first]!r}"
+                )
+
+    flow = [f"pages {flow_pages} hold the same words in a different arrangement"] if flow_pages else []
 
     return {
         "pass": not content,
         "content_issues": content[:10],
+        "flow_issues": flow[:10],
+        "flow_differs": bool(flow),
         "order_issues": order[:10],
         "order_differs": bool(order),
-        "issues": (content + order)[:10],
+        "issues": (content + flow + order)[:10],
     }
 
 
@@ -178,6 +192,9 @@ def compare(reference: dict, candidate: dict, tolerances: dict | None = None) ->
         # Same words, different reading order. Structural tiers are not
         # meaningful on a reordered page, so this tier wins over T1.
         tier, score = "ORDER", 0.5
+    elif t0["flow_differs"]:
+        # Every word is present, but pagination differs.
+        tier, score = "FLOW", 0.6
     elif not t1["pass"]:
         tier, score = "T1", 0.25
     elif t2["median_pt"] > median_max or t2["p95_pt"] > p95_max:
