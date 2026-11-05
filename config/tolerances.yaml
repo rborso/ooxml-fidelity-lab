@@ -1,0 +1,55 @@
+# Scoring thresholds and usage weights.
+# Tiers are evaluated in order and short-circuit: never report geometry
+# before answering "is the content intact?"
+
+tiers:
+  t0:
+    # Fatal. Same text, same order, same page assignment.
+    # Any difference means data loss. Score is capped at 0; stop.
+    enabled: true
+
+  t1:
+    require_same_page_count: true
+    require_same_line_count: true
+    line_break_match_ratio: 1.0
+
+  t2:
+    # Per-word bbox delta, in points, within a page's coordinate space.
+    median_pt_max: 1.0
+    p95_pt_max: 4.0
+    ignore_regions: []        # e.g. footers containing live date fields
+    report_font_substitutions: true
+
+  t3:
+    # Informational only. Never gates a score; exists for human review.
+    ssim_min: 0.95
+    enabled: false
+
+scoring:
+  t0_failure_caps_score_at: 0
+  aggregate:
+    # Report distributions, never a bare mean. The mean hides the tail,
+    # and the tail is the point.
+    report: [p50, p95, fatal_failure_count]
+
+weights:
+  # Human input. A 2pt shift on a signature page matters; the same shift
+  # in a 40-page annex does not. The harness cannot infer this.
+  document_class:
+    case_document: 1.0
+    template: 1.5
+    correspondence: 1.0
+    annex: 0.4
+
+roundtrip:
+  hops_max: 5
+  convergence:
+    # A document is safe in a mixed-author workflow when state(n+1) == state(n).
+    enabled: true
+    compare: [layout_tree, ooxml_semantic]
+  patterns:
+    - pass_through        # open -> save
+    - format_churn        # DOCX -> ODT -> DOCX
+    - edited              # open -> mutate -> save
+    - mixed_author        # Word edit -> suite edit -> Word edit
+  mutation_seed: 0        # recorded in every run; never reuse across comparisons

@@ -1,0 +1,44 @@
+# Example corpus manifest. The real manifest lives in private/corpus/manifest.yaml.
+#
+# Stratification target:
+#   ~70% real documents from the target population
+#   ~20% upstream bug-tracker attachments (already minimised and labelled)
+#   ~10% synthetic single-construct documents
+#
+# Real documents must not be added until a redaction and licensing policy
+# exists and has been applied to each item.
+
+corpus_version: 0
+frozen: false
+
+items:
+  - id: public-synthetic-0001
+    sha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    path: public/synthetic-0001.docx
+    class: template
+    source: synthetic
+    authored_in: word-2019
+    tags: [tables, merged_cells]
+    licence: CC0-1.0
+    split: dev
+    notes: "Minimal reproducer for conditional table style banding."
+
+  - id: public-bugzilla-0001
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+    path: public/tdf-example.docx
+    class: case_document
+    source: bugzilla
+    authored_in: word-365
+    tags: [numbering, lists]
+    licence: check-upstream-attachment-terms
+    split: holdout
+    notes: "Attached to an upstream report; already minimised by the reporter."
+
+# Fields
+#   id           stable identifier, never reused
+#   sha256       of the original file as ingested
+#   class        drives usage weighting in tolerances.yaml
+#   source       records-request | bugzilla | synthetic | template-library
+#   authored_in  which Word build produced it
+#   split        dev (tuning allowed) | holdout (published scores only)
+#   licence      must be resolvable before the item becomes publishable

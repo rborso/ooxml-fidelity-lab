@@ -1,0 +1,31 @@
+# Copy to private/config/oracle.yaml and fill in the real values.
+# This template contains no machine-specific data.
+
+oracle:
+  name: word-desktop-2019
+  vm:
+    image_sha256: "REPLACE"        # bump every time the VM image changes
+    hypervisor: kvm                # kvm | vmware | hyperv
+    network: none                  # required: offline test snapshot
+  word:
+    version: "16.0.10000"          # full build, not just 16.0
+    channel: perpetual-2019        # perpetual-2019 | perpetual-2021 | m365-channel-name
+    activated: true                # unactivated Office corrupts output
+    launch_flags: ["/a"]           # no add-ins, no global templates, no auto-macros
+    export_optimize_for: print     # never on-screen; you want the printed layout
+  windows:
+    edition: "Windows 10 Pro"
+    build: "19045"
+    locale: da-DK                  # must match the document population's authoring locale
+    paper: A4                      # follows locale; en-US silently defaults to Letter
+  printer:
+    driver: "Microsoft Print to PDF"
+    name: "Microsoft Print to PDF"
+    legacy_default_printer_mode: true
+  fonts:
+    directory_sha256: "REPLACE"    # real fonts here, NOT metric-compatible clones
+  determinism:
+    double_render_required: true
+    double_render_sample_rate: 0.05   # always 100% for a newly ingested batch
+    compare: layout_tree              # not pdf_bytes — PDFs embed timestamps
+    quarantine_on_mismatch: true

@@ -1,0 +1,45 @@
+# Copy to private/config/renderers.yaml and pin every digest.
+# A floating tag destroys comparability between runs.
+
+renderers:
+  - name: libreoffice
+    role: render
+    image: "libreoffice"
+    digest: "sha256:REPLACE"
+    adapter: soffice
+    # same engine as Collabora Online; simplest batch converter
+    command: >
+      soffice --headless --norestore --convert-to pdf --outdir /out /in/document.docx
+
+  - name: collabora-online
+    role: render
+    image: "collabora/code"
+    digest: "sha256:REPLACE"
+    adapter: coolwsd
+    # different bundled font set and defaults than desktop LibreOffice;
+    # use this when the deployment target is Collabora specifically
+
+  - name: onlyoffice
+    role: render
+    image: "onlyoffice/documentserver"
+    digest: "sha256:REPLACE"
+    adapter: onlyoffice
+    # heavier: all-in-one image bundles postgres, rabbitmq, redis
+
+  - name: x2t
+    role: convert_only
+    image: "REPLACE"
+    digest: "sha256:REPLACE"
+    adapter: x2t
+    # OOXML <-> ODF <-> bin without rendering; isolates conversion loss
+    # from layout loss
+
+fonts:
+  # Metric-compatible clones belong HERE, not on the oracle.
+  # Installing the real Calibri/Georgia on a renderer means testing a
+  # machine nobody actually has.
+  metric_compatible:
+    - { substitute: Carlito,  for: Calibri }
+    - { substitute: Caladea,  for: Cambria }
+    - { substitute: Gelasio,  for: Georgia }
+    - { substitute: Liberation, for: "Arial / Times New Roman" }

@@ -1,0 +1,102 @@
+# ---------------------------------------------------------------------------
+# Private working area.
+# Everything sensitive lives under private/ and is never committed.
+# Note the negation: the folder's README is tracked so the structure is
+# visible, but every other file inside is ignored.
+# ---------------------------------------------------------------------------
+private/*
+!private/README.md
+
+# ---------------------------------------------------------------------------
+# Real configuration. Contains local paths, VM image hashes, container
+# digests and font hashes. Only the *.example.yaml templates are public.
+# ---------------------------------------------------------------------------
+/config/oracle.yaml
+/config/renderers.yaml
+/config/local.yaml
+/config/*.local.yaml
+
+# ---------------------------------------------------------------------------
+# Document binaries are never committed by default.
+# Real corpus documents carry licence and confidentiality constraints.
+# Publishable fixtures must be added explicitly under corpus/public/.
+# ---------------------------------------------------------------------------
+*.docx
+*.doc
+*.docm
+*.odt
+*.ods
+*.odp
+*.pdf
+*.xlsx
+*.xlsm
+*.pptx
+
+!corpus/public/**/*.docx
+!corpus/public/**/*.pdf
+
+# ---------------------------------------------------------------------------
+# Generated artifacts and run data
+# ---------------------------------------------------------------------------
+/runs/
+/artifacts/
+/reports/draft/
+*.duckdb
+*.duckdb.wal
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# ---------------------------------------------------------------------------
+# Secrets and licences
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+*.licence
+*.licence.txt
+
+# ---------------------------------------------------------------------------
+# VM build material — large binaries and machine-specific files
+# ---------------------------------------------------------------------------
+*.vmdk
+*.vdi
+*.qcow2
+*.ova
+*.iso
+*.vhdx
+autounattend.xml
+/unattend/
+/vm/
+
+# ---------------------------------------------------------------------------
+# Editors and OS noise
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
