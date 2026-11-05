@@ -112,6 +112,23 @@ See SETUP.md §10. Do not build the framework before that gate is green.
 
 ---
 
+## Report site
+
+Runs and family records are rendered into a static site — no framework, no JavaScript:
+
+```bash
+make site     # build into private/site
+make serve    # serve it, bound to 127.0.0.1 by default
+SITE_BIND=172.16.10.2 SITE_PORT=8080 make serve
+```
+
+`scripts/host/serve.py` rebuilds the site when a new run or family record appears, so the
+page is current without a timer. On the lab host it runs as `ooxml-lab-site.service`,
+bound to the lab interface only.
+
+Pages: **Overview** (latest run, tiers, per-document deltas), **Runs** (history with
+run-over-run change), **Families** (failure records, rendered from `docs/families/*.md`).
+
 ## Execution model: no CI/CD
 
 There is deliberately **no continuous integration and no deployment pipeline** in this

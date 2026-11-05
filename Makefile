@@ -24,7 +24,7 @@ venv:
 	python3.12 -m venv .venv
 	$(PIP) install -U pip
 	$(PIP) install pymupdf lxml python-docx pydantic pyyaml typer \
-	               duckdb pikepdf imagehash pillow pytest
+	               duckdb pikepdf imagehash pillow pytest markdown
 
 ## Validate the corpus manifest against its schema
 check:
@@ -48,6 +48,14 @@ report:
 	[ -n "$$latest" ] || { echo "no runs yet"; exit 1; }; \
 	echo "run: $$latest"; \
 	$(PYTHON) -m harness.cli report --run "$$latest"
+
+## Build the static report site into private/site
+site:
+	$(PYTHON) -m harness.cli site --out private/site
+
+## Serve the report site (internal only; set SITE_BIND to expose it)
+serve:
+	$(PYTHON) scripts/host/serve.py --bind $${SITE_BIND:-127.0.0.1} --port $${SITE_PORT:-8080}
 
 ## Run the harness's own tests
 test:

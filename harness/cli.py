@@ -65,7 +65,8 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    work = Path(args.out).resolve() / f"run-{_stamp()}"
+    started = _stamp()
+    work = Path(args.out).resolve() / f"run-{started}"
     work.mkdir(parents=True, exist_ok=True)
     tol = _load_tolerances(Path(args.tolerances) if args.tolerances else None)
 
@@ -127,7 +128,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     }
 
     payload = {
-        "started": _stamp(),
+        "started": started,
         "corpus": corpus_label,
         "oracle": (
             "stub (collabora engine - not a fidelity reference)"
@@ -185,6 +186,15 @@ def _report(payload: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def cmd_site(args: argparse.Namespace) -> int:
+    from .site import build_from_repo
+
+    root = Path(args.repo).resolve()
+    info = build_from_repo(root, Path(args.out) if args.out else None)
+    print(f"built site: {info['runs']} runs, {info['families']} families -> {info['out']}")
+    return 0
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     run_dir = Path(args.run).resolve()
     data = json.loads((run_dir / "results.json").read_text())
@@ -223,6 +233,11 @@ def build_parser() -> argparse.ArgumentParser:
     rep.add_argument("--run", required=True)
     rep.add_argument("--out", default=None)
     rep.set_defaults(func=cmd_report)
+
+    site = sub.add_parser("site", help="build the static report site")
+    site.add_argument("--repo", default=".")
+    site.add_argument("--out", default=None)
+    site.set_defaults(func=cmd_site)
 
     return p
 
