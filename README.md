@@ -78,6 +78,7 @@ ooxml-fidelity-lab/
 ├── docs/
 │   ├── BOOTSTRAP.md         what can start before Windows exists
 │   └── families/            one page per known failure family
+├── scripts/windows/         oracle-harden.ps1 for the Windows VM
 ├── harness/                 the implementation (empty at pre-M0)
 └── private/                 GITIGNORED — nothing here is public
     ├── config/              real configs: VM hashes, paths, digests

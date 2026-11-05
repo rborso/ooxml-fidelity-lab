@@ -96,6 +96,30 @@ to High Performance, remove all network adapters from the test snapshot.
 Record and store: Windows edition + build, image SHA-256, Office build (`16.0.xxxxx`),
 font directory hash.
 
+### 3.1 Hardening script
+
+`scripts/windows/oracle-harden.ps1` automates the above plus debloat, telemetry and update
+policy. Run it from an elevated PowerShell **as the user that will auto-logon** — several
+settings live under HKCU and must land in that profile.
+
+```powershell
+.\oracle-harden.ps1 -WhatIf                                    # preview
+.\oracle-harden.ps1 -AutoLoginUser oracle -ConfigureOffice     # apply
+.\oracle-harden.ps1 -Verify                                    # assert invariants
+```
+
+It deliberately does **not** touch: the print spooler (Word lays out against the default
+printer's metrics), Windows Installer, COM/RPC, .NET, the font store, or the Trusted
+Location policy the automation depends on. Those invariants are re-checked at the end of
+every run and anything accidentally disabled is restored.
+
+`-Verify` changes nothing and exits non-zero on a failed invariant — run it before taking
+the snapshot. Every run writes `C:\oracle-harden\state.json` (OS build, Word version, font
+count, full change list) which belongs in the image record.
+
+`-AutoLoginPassword` is stored in plaintext by Windows itself. Acceptable only because the
+VM is offline and isolated; never do this on a networked machine.
+
 ---
 
 ## 4. Word configuration
