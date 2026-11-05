@@ -5,6 +5,8 @@
 **Tier:** T1 (line breaks) with T2 (geometry) consequences
 **Fix class:** `config` — font availability, not a code defect
 **Affected:** 1 synthetic case so far; expected to affect any document using Georgia
+**Pinned inputs:** `collabora/code@sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55`
+— Collabora Office 26.04.5.2, build `42745e44`; no oracle build (not yet available)
 
 ---
 
@@ -45,7 +47,7 @@ Minimal reproducer: a DOCX whose body is one paragraph with
 podman run --rm --user 0 -e HOME=/tmp \
   -v "$PWD/in:/in:Z" -v "$PWD/out:/out:Z" \
   --entrypoint /opt/collaboraoffice/program/soffice.bin \
-  collabora/code@sha256:<digest> \
+  collabora/code@sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55 \
   --headless --norestore --convert-to pdf --outdir /out /in/georgia.docx
 
 # then list embedded fonts
@@ -80,4 +82,4 @@ regressions.
 
 | Run | Renderer digest | Oracle build | Result |
 |---|---|---|---|
-| smoke-001 | `collabora/code:latest` (26.04.5.2) | none — no oracle yet | open |
+| smoke-001 | `sha256:808410e7…` (26.04.5.2) | none — no oracle yet | open |
