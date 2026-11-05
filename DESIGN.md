@@ -153,26 +153,62 @@ workflow. Continuous drift is a structural bug and is reported as such.
 - Output: smallest real document that still fails, plus a construct inventory.
 - This is the component that converts "1,400 broken files" into "eleven bugs."
 
-### 3.9 Clusterer
-- Group minimized reproducers by (a) OOXML construct signature and (b) diff signature.
-  Example diff signatures: "all lines inside table cells shift +3pt" → row-height bug;
-  "numbered lists restart at 1" → numbering definition mapping.
-- Rank families by documents-affected × usage weight of the document class.
-- Usage weight is a human input. A 2pt shift on a signature page matters; the same shift
-  in a 40-page annex does not.
+### 3.9 Families and lifecycle
+
+The unit of work is a **family**, not a document: 400 broken files are usually ~11 bugs. A
+family is keyed on (construct signature, diff signature) — e.g. "all lines inside table
+cells shift +3pt" → row-height handling.
+
+Every family moves through one state machine. Steps 2–3 are mandatory before any fix is
+proposed: an explanation without a minimal reproducer is a hypothesis, not a root cause.
+
+| # | Step | Produces |
+|---|---|---|
+| 1 | **detect** | family key, affected documents, tier |
+| 2 | **isolate** | ddmin minimal reproducer + one-construct synthetic case |
+| 3 | **explain** | root cause, marked `hypothesis` or `confirmed` |
+| 4 | **classify** | fix class (table below) |
+| 5 | **decide** | fix here / fix upstream / change templates / wontfix |
+| 6 | **test-first** | the failing synthetic case committed as a regression test |
+| 7 | **fix** | the changed artifact, recorded |
+| 8 | **verify** | family closed **and** corpus-wide no-regression sweep, plus score delta |
+| 9 | **record** | append-only observation; reopenable when a release regresses it |
+
+**Fix classes.** Most families should die at the first two and never reach a patch:
+
+| Class | Cost | Meaning |
+|---|---|---|
+| `config` | trivial | fonts, locale, settings |
+| `template` | trivial | change the document, not the software |
+| `integration` | medium | embedding / storage glue |
+| `renderer` | expensive | patch upstream |
+| `adjudicate` | zero | Word is wrong; do not replicate the bug |
+| `invalid` | zero | harness artifact / false positive |
+
+`adjudicate` and `invalid` are first-class outcomes. Without them the backlog fills with
+items where matching Word would make the product worse, and with issues that are our own
+bugs — which differential harnesses generate constantly.
+
+**Ranking:** affected documents × usage weight of the document class. Usage weight is a
+human input: a 2pt shift on a signature page matters; the same shift in a 40-page annex
+does not.
 
 ### 3.10 Synthetic generator
 - `build(construct_id) -> minimal.docx` exercising exactly one OOXML construct, with
   parameterized variants.
 - Used to (a) confirm a family's root cause in isolation, (b) create the permanent
   regression test attached to any upstream fix.
+- **Test-first:** written while it is still failing, committed, then fixed — so it becomes
+  the regression test rather than an afterthought.
 - Build on a template engine over `python-docx` plus direct XML injection for constructs
   the library cannot express.
 
 ### 3.11 Reporter
 - Per-run report: class scores, fatal-failure count, family list, release delta.
-- Per-family report: minimal repro, construct inventory, diff excerpt, affected count,
-  suggested owner.
+- **One Markdown page per family under `docs/families/`** (template:
+  `docs/families/TEMPLATE.md`) — reproduce command, mechanism, fix class, decision, retest
+  delta. This is the most durable artifact the project produces: a ten-minute fix for
+  anyone in any country.
 - Machine-readable JSON alongside human-readable output so a script or the operator can
   gate on it.
 
@@ -192,11 +228,23 @@ render_artifact(id, run_id, corpus_item_id, kind[reference|candidate|roundtrip],
 comparison(id, run_id, corpus_item_id, t0_pass, t1, t2_median_pt, t2_p95_pt,
     t3_ssim, font_substitutions[], score)
 
-family(id, construct_signature, diff_signature, affected_count,
-    first_seen_run, status[open|fixed|wontfix])
+family(id, family_key(construct_sig, diff_sig), document_classes[], tier,
+       fix_class, decision, status, first_seen_run, last_verified_run)
 
-repro(id, family_id, corpus_item_id, minimal_path, status)
+family_doc(family_id, corpus_item_id)
+
+repro(id, family_id, corpus_item_id, minimal_path, synthetic_path, reproduce_cmd)
+
+observation(id, family_id, run_id, renderer_digest, oracle_build, corpus_version,
+            result[open|closed|regressed], before_score, after_score)
+
+status: new | isolated | explained | decided | fixed | verified | closed
+      | wontfix | invalid
 ```
+
+`observation` is append-only and carries its own digests because a family is not "fixed"
+forever — it is "fixed as of digest X". Without that, the monitoring loop cannot tell
+"still broken" from "broken again".
 
 ---
 

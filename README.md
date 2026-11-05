@@ -76,7 +76,8 @@ ooxml-fidelity-lab/
 │   ├── manifest.example.yaml
 │   └── public/              explicitly publishable fixtures only
 ├── docs/
-│   └── BOOTSTRAP.md         what can start before Windows exists
+│   ├── BOOTSTRAP.md         what can start before Windows exists
+│   └── families/            one page per known failure family
 ├── harness/                 the implementation (empty at pre-M0)
 └── private/                 GITIGNORED — nothing here is public
     ├── config/              real configs: VM hashes, paths, digests

@@ -13,7 +13,7 @@ Implementation of the pipeline described in [DESIGN.md](../DESIGN.md). Empty at 
 | `score/` | Per-document and per-class aggregation, release deltas |
 | `roundtrip/` | Mutation matrix, convergence detection, semantic XML diff |
 | `minimize/` | ddmin over zip parts and `document.xml` |
-| `cluster/` | Failure families by construct signature + diff signature |
+| `families/` | Clustering by construct + diff signature, the detect→verify lifecycle, fix classification |
 | `synth/` | Single-construct document generators |
 | `report/` | JSON + Markdown output |
 

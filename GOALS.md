@@ -87,13 +87,17 @@ Measured per phase; each phase must be *done* before the next starts.
 
 ### Phase 3 — diagnosis
 - ≥80% of failing documents reduced to a minimal reproducer.
-- Failures grouped into named families; each family has a construct signature and a diff
+- Failures grouped into named families, each with a construct signature and a diff
   signature.
+- Every family carries a fix class. `adjudicate` (Word is wrong) and `invalid` (harness
+  artifact) are recorded outcomes, not silently dropped.
 
 ### Phase 4 — utility
 - At least one upstream project accepts a fix or regression test derived from a harness
   reproducer.
-- A published report with per-class scores and known families.
+- Every verified fix ships with a synthetic regression case that failed before it and
+  passes after, and a corpus-wide sweep shows no new failures.
+- A published report with per-class scores and one Markdown page per known family.
 
 ### Phase 5 — monitoring
 - A single operator command re-runs the full corpus against a new release. No CI/CD: the
