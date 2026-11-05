@@ -80,7 +80,11 @@ while ($true) {
     $jobs = @(Get-ChildItem -Path $InDir -Directory -ErrorAction SilentlyContinue)
     $pending = @()
     foreach ($job in $jobs) {
-        if (-not (Test-Path -LiteralPath (Join-Path $job.FullName 'document.docx'))) { continue }
+        # Accept document.* : the corpus is not all DOCX, and renaming a legacy
+        # .doc to .docx would make Word parse binary content as OOXML.
+        $doc = Get-ChildItem -LiteralPath $job.FullName -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'document.*' } | Select-Object -First 1
+        if (-not $doc) { continue }
         $outJob = Join-Path $OutDir $job.Name
         if (Test-Path -LiteralPath (Join-Path $outJob 'DONE')) { continue }
         if (Test-Path -LiteralPath (Join-Path $outJob 'FAIL')) { continue }
@@ -97,7 +101,8 @@ while ($true) {
 
     foreach ($job in $pending) {
         $name = $job.Name
-        $src = Join-Path $job.FullName 'document.docx'
+        $src = (Get-ChildItem -LiteralPath $job.FullName -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'document.*' } | Select-Object -First 1).FullName
         $outJob = Join-Path $OutDir $name
         New-Item -ItemType Directory -Force -Path $outJob | Out-Null
         $dst = Join-Path $outJob 'document.pdf'

@@ -16,6 +16,24 @@ import pymupdf
 
 SUBSET_PREFIX = re.compile(r"^[A-Z]{6}\+")
 
+# Word encodes Symbol/Wingdings bullets as private-use codepoints; LibreOffice
+# emits the Unicode character. Same glyph, different encoding, so normalise
+# before comparing or every bullet list looks like content loss.
+GLYPH_MAP = {
+    "\uf0b7": "\u2022",  # bullet
+    "\uf0a7": "\u25aa",  # small square
+    "\uf0a8": "\u25cb",  # small circle
+    "\uf0d8": "\u27a2",  # arrow bullet
+    "\uf076": "v",       # check as letter v
+    "\uf0fc": "\u2713",  # tick
+}
+
+
+def normalize_text(text: str) -> str:
+    for bad, good in GLYPH_MAP.items():
+        text = text.replace(bad, good)
+    return text
+
 
 def normalize_font(name: str) -> str:
     """Strip the subset prefix so 'BAAAAA+Carlito-Bold' == 'Carlito-Bold'."""
@@ -39,7 +57,7 @@ def extract_layout(pdf_path: Path) -> dict:
         raw = page.get_text("words")
         words = [
             {
-                "t": w[4],
+                "t": normalize_text(w[4]),
                 "b": [_r(w[0]), _r(w[1]), _r(w[2]), _r(w[3])],
                 "bl": int(w[5]),
                 "ln": int(w[6]),

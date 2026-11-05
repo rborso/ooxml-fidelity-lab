@@ -186,6 +186,22 @@ def _report(payload: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
+def cmd_fetch(args: argparse.Namespace) -> int:
+    from .fetch import fetch, to_yaml
+
+    entries = fetch(
+        base=args.base,
+        out_dir=Path(args.out),
+        limit=args.limit,
+        query=args.query,
+        delay=args.delay,
+    )
+    fragment = Path(args.out) / "manifest-fragment.yaml"
+    fragment.write_text(to_yaml(entries))
+    print(f"manifest fragment: {fragment}")
+    return 0 if entries else 1
+
+
 def cmd_site(args: argparse.Namespace) -> int:
     from .site import build_from_repo
 
@@ -238,6 +254,14 @@ def build_parser() -> argparse.ArgumentParser:
     site.add_argument("--repo", default=".")
     site.add_argument("--out", default=None)
     site.set_defaults(func=cmd_site)
+
+    f = sub.add_parser("fetch", help="download DOCX attachments from a bug tracker")
+    f.add_argument("--out", default="private/corpus/bugzilla")
+    f.add_argument("--limit", type=int, default=25)
+    f.add_argument("--query", default="docx")
+    f.add_argument("--base", default="https://bugs.documentfoundation.org")
+    f.add_argument("--delay", type=float, default=0.4)
+    f.set_defaults(func=cmd_fetch)
 
     return p
 

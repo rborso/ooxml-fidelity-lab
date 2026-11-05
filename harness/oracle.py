@@ -43,7 +43,9 @@ class WindowsOracle:
         for job_id, docx in docs.items():
             job = stage / job_id
             job.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(docx, job / "document.docx")
+            # Preserve the extension: a legacy .doc renamed to .docx would be
+            # parsed as OOXML and fail for the wrong reason.
+            shutil.copy2(docx, job / f"document{docx.suffix.lower()}")
 
         env = dict(os.environ, ORACLE_BOOT_TIMEOUT=str(self.timeout))
         proc = subprocess.run(
