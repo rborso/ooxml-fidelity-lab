@@ -168,6 +168,12 @@ offline, isolated VM; never on a networked machine.
   someone an unlocked desktop.
 - **Do not change device models after snapshotting.** SATA + e1000e + std VGA were chosen
   to avoid needing virtio drivers; switching to virtio later invalidates the image.
+- **Check BitLocker before trusting any copy.** Windows 11 enables it on many installs, and
+  it breaks the backup story: a disk image of an encrypted volume is unrestorable without
+  the recovery key or the matching vTPM state, and the volume cannot be inspected or
+  populated offline with `qemu-nbd` + `ntfs-3g` ("NTFS signature is missing"). For an
+  offline, physically-controlled oracle it buys nothing — disable it (`manage-bde -off C:`,
+  then wait for decryption) or export the recovery key before relying on a backup.
 
 ---
 
