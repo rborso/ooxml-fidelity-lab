@@ -54,7 +54,7 @@ that's fine — the requirement is snapshot + no-NIC, not the hypervisor.
 
 | Role | Spec | Notes |
 |---|---|---|
-| Oracle VM | 4 vCPU, 8 GB RAM, 80 GB disk | Word + Windows. Rendering is single-threaded — extra cores don't help one job |
+| Oracle VM | 4 vCPU, 12 GB RAM, 80 GB disk | Word + Windows. Rendering is single-threaded — extra cores don't help one job |
 | Oracle VM × N | one VM per parallel worker | Do **not** run concurrent jobs on one VM; do **not** clone one activation |
 | Renderer host | 8 vCPU, 16 GB RAM | OnlyOffice Document Server is heavy (PG + RabbitMQ + Redis ~4 GB) |
 | Storage | 200 GB working | 2,000 docs × ~5 render variants × 1–3 MB PDF + JSON layout trees |
@@ -119,6 +119,16 @@ count, full change list) which belongs in the image record.
 
 `-AutoLoginPassword` is stored in plaintext by Windows itself. Acceptable only because the
 VM is offline and isolated; never do this on a networked machine.
+
+### 3.2 Hypervisor hygiene
+
+- **Eject the install ISO** once setup is complete. A mounted cdrom changes device topology
+  and can be re-mounted between snapshots.
+- **VNC listens on `0.0.0.0` by default.** Set `<graphics type='vnc' listen='127.0.0.1'/>`
+  and tunnel (`ssh -L 5900:127.0.0.1:5900`). An exposed console is an easy way to hand
+  someone an unlocked desktop.
+- **Do not change device models after snapshotting.** SATA + e1000e + std VGA were chosen
+  to avoid needing virtio drivers; switching to virtio later invalidates the image.
 
 ---
 
@@ -196,8 +206,31 @@ Verify activation, and record the licence state in the run record.
 
 ## 5. Offline file transfer
 
-No network on the test VM. Use a shared folder (virtiofs / 9p) mounted as `C:\work`,
-because you need a **queue**, not an API:
+No network on the test VM at render time. Note that **Linux shared folders do not work with
+Windows guests**: virtiofs needs WinFsp plus a virtio-fs driver, and 9p is not supported by
+Windows at all. Do not plan around either.
+
+Stage the batch on the VM's local disk while it is still connected, then unplug the NIC:
+
+```bash
+# while online
+scp -r batch/ user@vm:C:/work/in/
+
+# take the oracle offline for the run — reversible, no domain redefinition
+virsh domif-setlink win11-0 <mac> down
+
+# ... run the batch in the interactive session ...
+
+# bring the link back only to collect results
+virsh domif-setlink win11-0 <mac> up
+scp -r user@vm:C:/work/out .
+```
+
+Renders happen entirely offline; the link is up only for staging and collection. For a
+stricter setup, attach a second disk image as an exchange volume and mount it with
+`qemu-nbd` on the host while the VM is shut down.
+
+The in-VM side is a **queue, not an API**:
 
 ```
 C:\work\in\<jobid>\document.docx
@@ -207,8 +240,26 @@ C:\work\out\<jobid>\result.json
 C:\work\out\<jobid>\DONE
 ```
 
-The host writes a job, the in-VM agent polls, renders, writes the artifacts and a `DONE`
-marker. Simple, debuggable, and it survives reboots without a network stack.
+The in-VM agent polls, renders, writes the artifacts and a `DONE` marker. Simple,
+debuggable, and it survives reboots without a network stack.
+
+### SSH is a control plane, not the render path
+
+OpenSSH on Windows opens a **non-interactive network logon with no desktop**, where Word
+COM automation fails or hangs (`0x80080005`). Never drive rendering over SSH.
+
+Use SSH for admin only — staging files, reading logs, running `-Verify`, restarting
+services — and bridge into the interactive session with a scheduled task:
+
+```powershell
+schtasks /run /tn "OracleAgent"
+```
+
+That task runs in the auto-logon user's desktop session, which is the only place Word
+works. For key auth, administrators must use
+`C:\ProgramData\ssh\administrators_authorized_keys` with strict ACLs, not
+`~\.ssh\authorized_keys` — the usual cause of "my key is right but it still asks for a
+password".
 
 ---
 
