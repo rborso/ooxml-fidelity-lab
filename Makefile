@@ -32,17 +32,18 @@ check:
 
 ## Oracle determinism gate (SETUP.md §10) — go/no-go before anything else
 gate:
-	$(PYTHON) -m harness.cli gate --config private/config/oracle.yaml
+	$(PYTHON) -m harness.cli gate --workdir private/runs/gate
 
-## Run the whole corpus through the oracle and configured renderers
+## Render the corpus and score it (synthetic docs when --corpus is omitted)
 run:
-	$(PYTHON) -m harness.cli run \
-		--oracle   private/config/oracle.yaml \
-		--renderers private/config/renderers.yaml
+	$(PYTHON) -m harness.cli run --out private/runs
 
-## Render a report from the most recent run
+## Re-render the report for the most recent run
 report:
-	$(PYTHON) -m harness.cli report --latest --out reports/
+	@latest=$$(ls -dt private/runs/run-* 2>/dev/null | head -1); \
+	[ -n "$$latest" ] || { echo "no runs yet"; exit 1; }; \
+	echo "run: $$latest"; \
+	$(PYTHON) -m harness.cli report --run "$$latest"
 
 ## Run the harness's own tests
 test:

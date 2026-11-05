@@ -168,6 +168,10 @@ offline, isolated VM; never on a networked machine.
   someone an unlocked desktop.
 - **Do not change device models after snapshotting.** SATA + e1000e + std VGA were chosen
   to avoid needing virtio drivers; switching to virtio later invalidates the image.
+- **Check the Windows edition.** Windows 11 **Home has no RDP host**, so remote
+  administration is the VNC console on the hypervisor, not RDP. OpenSSH can still be
+  enabled for file transfer and commands, but UAC elevation does not work in an SSH
+  (non-interactive) session.
 - **Check BitLocker before trusting any copy.** Windows 11 enables it on many installs, and
   it breaks the backup story: a disk image of an encrypted volume is unrestorable without
   the recovery key or the matching vTPM state, and the volume cannot be inspected or
