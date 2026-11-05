@@ -82,6 +82,20 @@ def test_metric_compatible_bold_variant_passes():
     assert res["t2"]["fonts_unexpected"] == {}
 
 
+def test_reordered_content_is_order_not_data_loss():
+    """Same words in a different order is a reading-order finding, not loss."""
+    res = compare.compare(make(["alpha", "beta"]), make(["beta", "alpha"]))
+    assert res["tier"] == "ORDER"
+    assert res["t0"]["pass"] is True
+    assert res["t0"]["order_differs"] is True
+
+
+def test_missing_word_is_data_loss():
+    res = compare.compare(make(["alpha", "beta"]), make(["alpha"]))
+    assert res["tier"] == "T0"
+    assert res["t0"]["pass"] is False
+
+
 def test_line_count_change_fails_t1():
     res = compare.compare(make(["alpha"], line_count=2), make(["alpha"], line_count=3))
     assert res["tier"] == "T1"

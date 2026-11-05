@@ -114,10 +114,16 @@ Tiered, evaluated in order, short-circuiting:
 
 | Tier | Assertion | On failure |
 |---|---|---|
-| T0 | Same text content, same order, same page assignment | fatal — data loss |
+| T0 | Same text content present per page (multiset) | fatal — data loss |
+| T0-order | Same words, different reading order | `ORDER`, not fatal |
 | T1 | Same page count, line count, line break positions | structural |
 | T2 | Per-word bbox delta within tolerance (median and p95, in points) | cosmetic |
 | T3 | Raster similarity (SSIM / perceptual hash) | informational only |
+
+Content presence and content order are separate assertions. Losing a word is fatal;
+visiting the same words in a different order is a reading-order difference — real, worth
+reporting, but scoring it as data loss buries the findings that matter. Text boxes and
+multi-column layouts produce order differences constantly.
 
 Font substitution report is emitted alongside T2: which font names were requested,
 which were found, which were substituted.

@@ -26,6 +26,7 @@ TIER_CLASS = {
     "PASS": "ok",
     "T2-fonts": "warn",
     "T2": "warn",
+    "ORDER": "warn",
     "T1": "bad",
     "T0": "fatal",
     "ORACLE-FAIL": "fatal",

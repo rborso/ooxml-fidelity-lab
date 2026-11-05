@@ -82,10 +82,13 @@ log "staging $(find "$IN" -maxdepth 1 -mindepth 1 -type d | wc -l) job(s)"
 sudo -n rm -rf "$MOUNT/work/in" "$MOUNT/work/out"
 sudo -n mkdir -p "$MOUNT/work/in" "$MOUNT/work/out"
 for job in "$IN"/*/; do
-  [ -f "${job}document.docx" ] || continue
+  # Any document.*, not just .docx: legacy .doc is part of the corpus and
+  # cannot be renamed to .docx without Word parsing it as OOXML.
+  src=$(find "${job}" -maxdepth 1 -type f -name 'document.*' | head -1)
+  [ -n "$src" ] || continue
   name=$(basename "$job")
   sudo -n mkdir -p "$MOUNT/work/in/$name"
-  sudo -n cp "${job}document.docx" "$MOUNT/work/in/$name/document.docx"
+  sudo -n cp "$src" "$MOUNT/work/in/$name/$(basename "$src")"
 done
 sudo -n rm -f "$MOUNT/work/agent/agent.log"
 detach

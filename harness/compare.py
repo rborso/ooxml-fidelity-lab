@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import statistics
+from collections import Counter
 
 from .extract import line_signature, page_text
 
@@ -21,12 +22,35 @@ METRIC_COMPATIBLE: dict[str, set[str]] = {
     "Arial": {"Liberation Sans", "LiberationSans"},
     "Times New Roman": {"Liberation Serif", "LiberationSerif"},
     "Courier New": {"Liberation Mono", "LiberationMono"},
+    "Symbol": {"OpenSymbol", "NotoSansSymbols"},
 }
+
+# Word's PDF export names fonts by PostScript name; LibreOffice uses the family.
+FONT_ALIASES = {
+    "ArialMT": "Arial",
+    "Arial-BoldMT": "Arial",
+    "Arial-ItalicMT": "Arial",
+    "TimesNewRomanPSMT": "Times New Roman",
+    "TimesNewRomanPS-BoldMT": "Times New Roman",
+    "TimesNewRomanPS-ItalicMT": "Times New Roman",
+    "SymbolMT": "Symbol",
+    "CourierNewPSMT": "Courier New",
+}
+
+# Tokens are compared as alphanumeric runs. Engines differ on whether trailing
+# punctuation is its own token ("издания." vs "издания" + "."), which is not a
+# content difference.
+TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def page_tokens(page: dict) -> list[str]:
+    return TOKEN_RE.findall(" ".join(page_text(page)))
 
 
 def _family(name: str) -> str:
     """'Calibri-Bold' and 'Times New Roman,Bold' both reduce to the family."""
-    return re.split(r"[-,]", name or "")[0].strip()
+    base = re.split(r"[-,]", name or "")[0].strip()
+    return FONT_ALIASES.get(base, base)
 
 
 def classify_fonts(missing: list[str], extra: list[str]) -> tuple[dict, dict]:
@@ -49,30 +73,47 @@ def classify_fonts(missing: list[str], extra: list[str]) -> tuple[dict, dict]:
 
 
 def _t0(reference: dict, candidate: dict) -> dict:
-    """Same words, same order, same page."""
-    issues: list[str] = []
+    """Content presence first, then content order.
+
+    Losing a word is fatal. Visiting the same words in a different order is a
+    reading-order difference: real, worth reporting, but not data loss. Scoring
+    it as fatal buries the findings that actually matter.
+    """
+    content: list[str] = []
+    order: list[str] = []
+
     if len(reference["pages"]) != len(candidate["pages"]):
-        issues.append(
+        content.append(
             f"page count {len(candidate['pages'])} != {len(reference['pages'])}"
         )
 
     for rp, cp in zip(reference["pages"], candidate["pages"]):
-        rt, ct = page_text(rp), page_text(cp)
-        if rt == ct:
-            continue
-        if len(rt) != len(ct):
-            issues.append(
-                f"page {rp['number']}: {len(ct)} words != {len(rt)}"
+        rt, ct = page_tokens(rp), page_tokens(cp)
+        rcount, ccount = Counter(rt), Counter(ct)
+        if rcount != ccount:
+            missing = rcount - ccount
+            extra = ccount - rcount
+            bits = []
+            if missing:
+                names = ", ".join(repr(w) for w in list(missing)[:3])
+                bits.append(f"missing {sum(missing.values())} ({names})")
+            if extra:
+                names = ", ".join(repr(w) for w in list(extra)[:3])
+                bits.append(f"extra {sum(extra.values())} ({names})")
+            content.append(f"page {rp['number']}: {', '.join(bits)}")
+        elif rt != ct:
+            first = next(i for i, (a, b) in enumerate(zip(rt, ct)) if a != b)
+            order.append(
+                f"page {rp['number']} word {first}: {ct[first]!r} != {rt[first]!r}"
             )
-            continue
-        for i, (a, b) in enumerate(zip(rt, ct)):
-            if a != b:
-                issues.append(
-                    f"page {rp['number']} word {i}: {b!r} != {a!r}"
-                )
-                break
 
-    return {"pass": not issues, "issues": issues[:10]}
+    return {
+        "pass": not content,
+        "content_issues": content[:10],
+        "order_issues": order[:10],
+        "order_differs": bool(order),
+        "issues": (content + order)[:10],
+    }
 
 
 def _t1(reference: dict, candidate: dict) -> dict:
@@ -133,7 +174,11 @@ def compare(reference: dict, candidate: dict, tolerances: dict | None = None) ->
     median_max = float(t2_max.get("median_pt_max", 1.0))
     p95_max = float(t2_max.get("p95_pt_max", 4.0))
 
-    if not t1["pass"]:
+    if t0["order_differs"]:
+        # Same words, different reading order. Structural tiers are not
+        # meaningful on a reordered page, so this tier wins over T1.
+        tier, score = "ORDER", 0.5
+    elif not t1["pass"]:
         tier, score = "T1", 0.25
     elif t2["median_pt"] > median_max or t2["p95_pt"] > p95_max:
         tier, score = "T2", 0.75
