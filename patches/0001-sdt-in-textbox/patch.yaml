@@ -9,7 +9,7 @@ base:
   digest: "sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55"
   version: "26.04.5.2"
 
-patched:
+custom:
   image: "ooxml-lab/collabora:0001-sdt-in-textbox"
   digest: "REPLACE_AFTER_BUILD"
 

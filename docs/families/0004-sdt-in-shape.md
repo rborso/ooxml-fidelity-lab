@@ -47,12 +47,22 @@ shape content with Content Controls"*.
 
 ## Mechanism
 
-**Hypothesis:** structured document tags (`w:sdt`) nested inside a floating text box are
-skipped by the importer. Either the shape content is walked without descending into `sdt`,
-or the `sdt` is dropped when it appears outside the body-level content flow.
+**Confirmed by experiment.** Two candidate causes were ruled in or out by rendering three
+variants of the reproducer through the renderer alone — no Word, no VM:
 
-This is a nested-construct bug: text boxes work (family 0002 is the `.doc` path, not this),
-and content controls work at body level. It is the combination.
+| Variant | Words rendered |
+|---|---|
+| original | **0** |
+| `sdt` unwrapped, content inlined | **8** |
+| `mso-next-textbox` chain removed, `sdt` kept | **0** |
+
+Unwrapping the `sdt` restores every word; removing the VML text-box chaining changes
+nothing. So the trigger is the **block-level `w:sdt` inside `w:txbxContent`**, not the
+chained shapes.
+
+The importer's shape text-body context accepts `w:p` and `w:tbl` but not `sdt`, so the
+tokenizer skips the subtree and the runs never reach the domain mapper. Body-level `sdt`
+and text boxes each work; it is the combination that fails.
 
 ## Evidence
 

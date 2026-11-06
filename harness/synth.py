@@ -126,10 +126,14 @@ def _sdt(text: str) -> str:
 
 
 def _textbox(text: str) -> str:
+    # A bare w:txbxContent inside w:pict is not a valid shape and Word refuses
+    # to open the file. Wrap it in a real VML shape.
     return (
-        "<w:p><w:r><w:pict><w:txbxContent>"
+        '<w:p><w:r><w:pict xmlns:v="urn:schemas-microsoft-com:vml">'
+        '<v:shape id="labsdtb1" style="width:200pt;height:60pt" filled="f" stroked="f">'
+        "<v:textbox><w:txbxContent>"
         f"<w:p><w:r><w:t>{text}</w:t></w:r></w:p>"
-        "</w:txbxContent></w:pict></w:r></w:p>"
+        "</w:txbxContent></v:textbox></v:shape></w:pict></w:r></w:p>"
     )
 
 

@@ -4,13 +4,26 @@ Fixes family **0004**. Reproducer: `bz31914-sdt-textbox`.
 
 ## The change
 
-`writerfilter` walks shape text bodies without pushing an `SdtContext`, so a structured
-document tag inside a text box is skipped and its runs never reach the domain mapper.
-The body and table-cell paths already do this; the shape text-body path does not.
+`writerfilter` walks shape text bodies without handling `w:sdt`, so a block-level
+structured document tag inside a text box is skipped and its runs never reach the domain
+mapper. The body and table-cell paths already push and pop `SdtContext`; the shape
+text-body path does not.
+
+**Cause confirmed by experiment** (family 0004): unwrapping the `sdt` restores all 8 words;
+removing the VML text-box chain does not. The chain is not involved.
 
 The patch adds `sdt` to the elements the shape text-body context handles and routes them
 through the existing `SdtContext` push/pop, so the control's content is imported like any
-other paragraph content.
+other block content.
+
+Scope, precisely:
+
+- `writerfilter/source/ooxml/` — the shape text-body context's accepted element table
+- `writerfilter/source/dmapper/SdtHelper.cxx` — only if the block-level form needs
+  placeholder handling suppressed; a block `sdt` has no placeholder run
+- a narrower first version can treat `sdt` there as a transparent wrapper and import
+  `w:sdtContent`'s children. That restores the text but loses control semantics, so it is a
+  stopgap rather than the fix
 
 ## Apply
 
@@ -34,8 +47,8 @@ Rebuild and retag as the clean image. The clean build is never modified in place
 
 ```bash
 make run-clean     # bz31914-sdt-textbox should be T0
-make run-patched   # should be PASS or SEGMENT
-.venv/bin/python -m harness.cli drift --run-a <clean> --run-b <patched>
+make run-custom   # should be PASS or SEGMENT
+.venv/bin/python -m harness.cli drift --run-a <clean> --run-b <custom>
 ```
 
 Acceptance: the reproducer improves **and** no other document's tier drops.

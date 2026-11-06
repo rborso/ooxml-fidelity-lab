@@ -98,9 +98,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         else {}
     )
 
-    if args.renderer == "patched":
-        render_fn = render.render_patched
-        image_used = render.PATCHED_IMAGE or "unset (PATCHED_IMAGE)"
+    if args.renderer == "custom":
+        render_fn = render.render_custom
+        image_used = render.CUSTOM_IMAGE or "unset (CUSTOM_IMAGE)"
     else:
         render_fn = render.render_collabora
         image_used = render.COLLABORA_IMAGE
@@ -229,6 +229,53 @@ def cmd_crosscheck(args: argparse.Namespace) -> int:
         "outliers={outliers} threshold={threshold}".format(**summary)
     )
     return 0 if summary["ok"] else 1
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    """Acceptance gate for a patch: compare a clean run with a custom run.
+
+    A patch is acceptable only if it improves its target and degrades nothing
+    else. Degradations are printed first and fail the command.
+    """
+    from .drift import load
+
+    clean = {d["id"]: d for d in load(Path(args.clean_run).resolve()).get("documents", [])}
+    custom = {d["id"]: d for d in load(Path(args.custom_run).resolve()).get("documents", [])}
+
+    shared = sorted(set(clean) & set(custom))
+    improvements, degradations, unchanged = [], [], 0
+    for doc_id in shared:
+        before, after = clean[doc_id], custom[doc_id]
+        delta = round(float(after.get("score", 0)) - float(before.get("score", 0)), 4)
+        row = (doc_id, before.get("tier"), after.get("tier"), delta)
+        if delta < 0:
+            degradations.append(row)
+        elif delta > 0:
+            improvements.append(row)
+        else:
+            unchanged += 1
+
+    only_clean = sorted(set(clean) - set(custom))
+    only_custom = sorted(set(custom) - set(clean))
+
+    if degradations:
+        print("DEGRADATIONS")
+        for doc_id, before, after, delta in degradations:
+            print(f"  {doc_id:26s} {before:9s} -> {after:9s} {delta:+.4f}")
+    if improvements:
+        print("IMPROVEMENTS")
+        for doc_id, before, after, delta in improvements:
+            print(f"  {doc_id:26s} {before:9s} -> {after:9s} {delta:+.4f}")
+    if only_clean:
+        print(f"MISSING FROM CUSTOM: {', '.join(only_clean[:10])}")
+    if only_custom:
+        print(f"ONLY IN CUSTOM: {', '.join(only_custom[:10])}")
+
+    print(
+        f"compared={len(shared)} improved={len(improvements)} "
+        f"degraded={len(degradations)} unchanged={unchanged}"
+    )
+    return 1 if degradations else 0
 
 
 def cmd_drift(args: argparse.Namespace) -> int:
@@ -415,7 +462,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
-    r.add_argument("--renderer", default="clean", choices=["clean", "patched"])
+    r.add_argument("--renderer", default="clean", choices=["clean", "custom"])
     r.add_argument("--domain", default="win11-0")
     r.add_argument("--boot-timeout", type=int, default=900)
     r.set_defaults(func=cmd_run)
@@ -444,6 +491,11 @@ def build_parser() -> argparse.ArgumentParser:
     dr.add_argument("--run-a", required=True)
     dr.add_argument("--run-b", required=True)
     dr.set_defaults(func=cmd_drift)
+
+    va = sub.add_parser("validate", help="acceptance gate: clean run vs custom run")
+    va.add_argument("--clean-run", required=True)
+    va.add_argument("--custom-run", required=True)
+    va.set_defaults(func=cmd_validate)
 
     ar = sub.add_parser("archive", help="archival checks on a run's PDFs")
     ar.add_argument("--run", required=True)

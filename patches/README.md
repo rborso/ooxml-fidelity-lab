@@ -6,7 +6,7 @@ and can be removed cleanly.
 ## Policy
 
 1. **One patch, one family.** A patch that claims to fix two families is two patches.
-2. **Always two builds.** `clean` is the upstream image; `patched` is upstream plus exactly
+2. **Always two builds.** `clean` is the upstream image; `custom` is upstream plus exactly
    one patch. The corpus runs against both, so a regression is visible immediately rather
    than at the next release.
 3. **Artifacts are kept.** Every run directory is permanent: reference PDFs, candidate
@@ -31,16 +31,16 @@ patches/
 # 1. Baseline on the clean build
 make run-clean
 
-# 2. Build the patched image (needs a LibreOffice source tree)
-./scripts/host/build-patched.sh patches/0001-sdt-in-textbox
-export PATCHED_IMAGE=ooxml-lab/collabora:0001-<sha>
+# 2. Build the custom image (needs a LibreOffice source tree)
+./scripts/host/build-custom.sh patches/0001-sdt-in-textbox
+export CUSTOM_IMAGE=ooxml-lab/collabora:0001-<sha>
 
-# 3. Same corpus, patched build
-make run-patched
+# 3. Same corpus, custom build
+make run-custom
 
 # 4. Compare: degradations first, then improvements
 .venv/bin/python -m harness.cli drift \
-  --run-a private/runs/<clean> --run-b private/runs/<patched>
+  --run-a private/runs/<clean> --run-b private/runs/<custom>
 ```
 
 `drift` reports every document whose tier changed, in both directions. Any document that
@@ -55,9 +55,9 @@ git apply -R patches/0001-sdt-in-textbox/fix.patch
 ```
 
 The clean image is never patched in place. If a patch is wrong, the clean build already
-exists and the patched one is discarded.
+exists and the custom one is discarded.
 
 ## Why the images are pinned by digest
 
-A patched build that is referenced by a floating tag cannot be compared to anything: you
+A custom build that is referenced by a floating tag cannot be compared to anything: you
 cannot say which bytes produced which score. Both images are recorded in every run.

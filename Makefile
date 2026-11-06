@@ -34,21 +34,23 @@ check:
 gate:
 	$(PYTHON) -m harness.cli gate --workdir private/runs/gate
 
+CORPUS ?= private/corpus/manifest.yaml
+
 ## Render the corpus and score it (synthetic docs when --corpus is omitted)
 run:
 	$(PYTHON) -m harness.cli run --out private/runs
 
 ## Same, but with the real Windows oracle (boots the VM, renders offline)
 run-oracle:
-	$(PYTHON) -m harness.cli run --oracle windows --out private/runs
+	$(PYTHON) -m harness.cli run --oracle windows --corpus $(CORPUS) --out private/runs
 
 ## Baseline against the clean upstream renderer
 run-clean:
-	$(PYTHON) -m harness.cli run --oracle windows --renderer clean --out private/runs
+	$(PYTHON) -m harness.cli run --oracle windows --renderer clean --corpus $(CORPUS) --out private/runs
 
-## Same corpus against the patched renderer (requires PATCHED_IMAGE)
-run-patched:
-	$(PYTHON) -m harness.cli run --oracle windows --renderer patched --out private/runs
+## Same corpus against the custom renderer (requires CUSTOM_IMAGE)
+run-custom:
+	$(PYTHON) -m harness.cli run --oracle windows --renderer custom --corpus $(CORPUS) --out private/runs
 
 ## Re-render the report for the most recent run
 report:

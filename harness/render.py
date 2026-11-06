@@ -79,17 +79,17 @@ def stub_oracle(docx: Path, out_dir: Path) -> Path:
 ONLYOFFICE_IMAGE = "docker.io/onlyoffice/documentserver"
 
 # Set to a locally built image tagged by digest to measure a patch.
-PATCHED_IMAGE = os.environ.get("PATCHED_IMAGE")
+CUSTOM_IMAGE = os.environ.get("CUSTOM_IMAGE")
 
 
-def render_patched(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
-    """Render with the patched build. Always paired with a clean build run."""
-    if not PATCHED_IMAGE:
+def render_custom(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
+    """Render with the custom build. Always paired with a clean build run."""
+    if not CUSTOM_IMAGE:
         raise RenderError(
-            "PATCHED_IMAGE is not set: build the patched image (see patches/README.md), "
-            "tag it by digest, and export PATCHED_IMAGE=<image@sha256:...>"
+            "CUSTOM_IMAGE is not set: build the custom image (see patches/README.md), "
+            "tag it by digest, and export CUSTOM_IMAGE=<image@sha256:...>"
         )
-    return render_collabora(docx, out_dir, image=PATCHED_IMAGE, timeout=timeout)
+    return render_collabora(docx, out_dir, image=CUSTOM_IMAGE, timeout=timeout)
 
 
 def onlyoffice_available(url: str | None = None) -> tuple[bool, str]:
