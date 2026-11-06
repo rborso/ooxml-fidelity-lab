@@ -64,6 +64,29 @@ def test_adjacent_tables_are_separated(tmp_path):
     assert xml.count("<w:p/>") == 2
 
 
+def test_trailing_page_break_is_removed(tmp_path):
+    """A break with nothing after it only produces a blank page."""
+    with_break = (
+        '<w:p><w:r><w:t>kept</w:t></w:r><w:r><w:br w:type="page"/></w:r></w:p>'
+    )
+    source = build(tmp_path, with_break + PARA)
+    out = tmp_path / "out.docx"
+    info = extract(source, out, ["kept"])
+    xml = body_xml(out)
+    assert 'w:type="page"' not in xml
+    assert info["page_breaks_removed"] == 1
+
+
+def test_page_break_with_content_after_it_is_kept(tmp_path):
+    """The break lives in a retained paragraph; content follows it."""
+    first = '<w:p><w:r><w:t>kept</w:t></w:r><w:r><w:br w:type="page"/></w:r></w:p>'
+    second = '<w:p><w:r><w:t>kept again</w:t></w:r></w:p>'
+    source = build(tmp_path, first + second)
+    out = tmp_path / "out.docx"
+    extract(source, out, ["kept"])
+    assert 'w:type="page"' in body_xml(out)
+
+
 def test_section_properties_are_preserved(tmp_path):
     source = build(tmp_path, PARA + TEXTBOX)
     out = tmp_path / "out.docx"

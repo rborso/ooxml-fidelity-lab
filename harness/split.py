@@ -23,6 +23,34 @@ def _matches(element, needles: list[str], mode: str) -> bool:
     return all(needle in serialized for needle in needles)
 
 
+def _trim_trailing_page_breaks(body) -> int:
+    """Drop page breaks that have no content after them.
+
+    A break exists to push content onto a new page. Once the extraction removes
+    that content the break produces an empty page, which is an artefact of the
+    split rather than a property of the document - and an empty page in a bug
+    report is just noise.
+    """
+    removed = 0
+    for br in [b for b in body.iter(f"{{{W}}}br") if b.get(f"{{{W}}}type") == "page"]:
+        following = False
+        seen = False
+        for element in body.iter():
+            if element is br:
+                seen = True
+                continue
+            if seen and element.tag in (f"{{{W}}}p", f"{{{W}}}tbl"):
+                if "".join(element.itertext()).strip():
+                    following = True
+                    break
+        if not following:
+            parent = br.getparent()
+            if parent is not None:
+                parent.remove(br)
+                removed += 1
+    return removed
+
+
 def extract(src: Path, dst: Path, needles: list[str], mode: str = "all") -> dict:
     """Keep only body children whose XML contains the given substrings.
 
@@ -62,6 +90,8 @@ def extract(src: Path, dst: Path, needles: list[str], mode: str = "all") -> dict
             body.insert(body.index(child), etree.Element(f"{{{W}}}p"))
         previous = child
 
+    breaks_removed = _trim_trailing_page_breaks(body)
+
     entries[DOCUMENT] = etree.tostring(
         tree, xml_declaration=True, encoding="UTF-8", standalone=True
     )
@@ -70,4 +100,5 @@ def extract(src: Path, dst: Path, needles: list[str], mode: str = "all") -> dict
         for name, data in entries.items():
             archive.writestr(name, data)
 
-    return {"source": str(src), "out": str(dst), "kept": kept, "removed": removed}
+    return {"source": str(src), "out": str(dst), "kept": kept, "removed": removed,
+            "page_breaks_removed": breaks_removed}
