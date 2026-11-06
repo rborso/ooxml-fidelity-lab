@@ -1,0 +1,29 @@
+id: "0002"
+title: "Ship Gelasio so Georgia substitutes with a metric-compatible clone"
+family: "0001"
+upstream: "packaging"
+component: "font bundle"
+
+base:
+  image: "docker.io/collabora/code"
+  digest: "sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55"
+  version: "26.04.5.2"
+
+custom:
+  image: "ooxml-lab/collabora:fonts-custom"
+  digest: "sha256:df0ec3c20609fc860d24d2912be5ef71f16979c0d4406a0a2801c6dca0080360"
+
+reproducer: "georgia"
+
+expected:
+  before: "T1 - Georgia substituted with NotoSerif, line breaks move"
+  after: "PASS - Georgia substituted with Gelasio, metrics identical"
+
+build: "podman build -t ooxml-lab/collabora:fonts-custom -f Containerfile ."
+revert: "use the clean image; nothing is patched in place"
+
+notes: >
+  Not a code patch. The image has no shell, so this is a COPY-only build: the
+  font lands in the office font directory and LibreOffice picks it up without a
+  fontconfig refresh. Verified by rendering the georgia construct on both
+  images: clean embeds NotoSerif-Regular, custom embeds Gelasio-Regular.

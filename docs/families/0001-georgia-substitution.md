@@ -1,6 +1,6 @@
 # Family 0001 — Georgia substituted with a non-metric fallback
 
-**Status:** explained (fix proposed, not yet applied)
+**Status:** fixed (image-level font addition, patch 0002) — verified on the synthetic suite
 **Family key:** `w:rFonts[@w:ascii='Georgia']` × `line breaks and pagination change; no data loss`
 **Tier:** T1 (line breaks) with T2 (geometry) consequences
 **Fix class:** `config` — font availability, not a code defect
@@ -75,12 +75,26 @@ would test a machine nobody has. Metric-compatible clones are the correct substi
 
 ## Fix
 
-Pending.
+**Applied as `patches/0002-gelasio-font`.** A derived image, `FROM` the pinned upstream plus
+a `COPY` of Gelasio into the office font directory. No compiler involved: the image has no
+shell, and LibreOffice scans its own font directory, so no `fc-cache` is needed.
+
+```
+clean   fonts: Carlito, NotoSerif-Regular     ← Georgia fell back to a generic serif
+custom  fonts: Carlito, Gelasio-Regular       ← metric-compatible clone
+```
 
 ## Retest
 
-Pending. Expected: T1 line-break match restored, T2 deltas within tolerance, no corpus-wide
-regressions.
+| Suite | Before | After |
+|---|---|---|
+| synthetic `georgia` | **T1** 0.25 | **PASS** 1.00 |
+| synthetic suite mean | 0.8187 | 0.9125 |
+| full corpus (42 docs) | — | 0 improved, **0 degraded**, 42 unchanged |
+
+The corpus result is the important one: adding the font changed nothing else. No corpus
+document currently requests Georgia, which is why the improvement only shows on the
+synthetic suite — and why the family stays open until a real document exercises it.
 
 ## History
 
@@ -88,3 +102,4 @@ regressions.
 |---|---|---|---|
 | smoke-001 | `sha256:808410e7…` (26.04.5.2) | none — no oracle yet | open |
 | run-20261105T161944Z | `sha256:808410e7…` (26.04.5.2) | 16.0.19127.20860 | open (T1, 24.52 pt) |
+| run-20261106T074656Z | `sha256:df0ec3c2…` (26.04.5.2 + Gelasio) | 16.0.19127.20860 | fixed — PASS |

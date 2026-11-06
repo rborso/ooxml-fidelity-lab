@@ -1,0 +1,5 @@
+FROM docker.io/collabora/code@sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55
+# Gelasio is metric-compatible with Georgia. The upstream image ships Carlito,
+# Caladea, Liberation and a Noto subset, but no Georgia clone, so a Georgia run
+# falls back to NotoSerif - a generic serif with different metrics.
+COPY Gelasio-VF.ttf /opt/collaboraoffice/share/fonts/truetype/Gelasio-VF.ttf
