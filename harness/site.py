@@ -89,6 +89,10 @@ margin-bottom:8px}
 .cols figcaption{font-size:12px;color:var(--mut);margin-bottom:6px}
 .cols img{width:100%;border:1px solid var(--line);border-radius:4px;background:#fff}
 @media (max-width:760px){.cols{grid-template-columns:1fr}}
+a{color:#0b5cad;text-decoration:none}
+a:hover{text-decoration:underline}
+td a,.fam a,.doc a{text-decoration:underline}
+td a:hover,.fam a:hover,.doc a:hover{text-decoration:none}
 footer{color:var(--mut);font-size:12.5px;border-top:1px solid var(--line);margin-top:40px;
 padding-top:14px}
 """
@@ -296,8 +300,9 @@ def _build_run_pages(runs_dir: Path, runs: list[dict], out_dir: Path) -> int:
         summary = run.get("summary", {})
         body = [
             f'<p><a href="../index.html">&larr; overview</a></p>',
-            f'<h2 style="margin-top:0">Run {_esc(run.get("started", run_id))}</h2>',
-            f'<p class="mut">oracle <span class="mono">{_esc(run.get("oracle", "?"))}</span>'
+            f'<h2 style="margin-top:0">{_esc(run_id)}</h2>',
+            f'<p class="mut">started <span class="mono">{_esc(run.get("started", "?"))}</span>'
+            f' &middot; oracle <span class="mono">{_esc(run.get("oracle", "?"))}</span>'
             f' &middot; renderer <span class="mono">{_esc(str(run.get("renderer", "?")).split("@")[0])}</span></p>',
         ]
         if run.get("renderer", "").startswith("sha256"):
@@ -343,7 +348,7 @@ def _build_run_pages(runs_dir: Path, runs: list[dict], out_dir: Path) -> int:
             )
         body.append("</table>")
 
-        (base / f"{run_id}.html").write_text(_page(f"Run {run_id}", "runs", "\n".join(body), prefix="../"))
+        (base / f"{run_id}.html").write_text(_page(run_id, "runs", "\n".join(body), prefix="../"))
         built += 1
     return built
 
@@ -365,9 +370,10 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         tiers = s.get("by_tier", {})
         real = latest["oracle"].startswith("windows")
         body.append(
-            f'<p class="mut">Latest run <span class="mono">{_esc(latest["started"])}</span> '
-            f'&middot; oracle <span class="mono">{_esc(latest["oracle"])}</span> '
-            f'&middot; renderer <span class="mono">{_esc(latest["renderer"].split("@")[0])}</span></p>'
+            f'<p class="mut">Latest run '
+            f'<a href="runs/{_esc(latest["_dir"])}.html" class="mono">{_esc(latest["_dir"])}</a>'
+            f' &middot; oracle <span class="mono">{_esc(latest["oracle"])}</span>'
+            f' &middot; renderer <span class="mono">{_esc(latest["renderer"].split("@")[0])}</span></p>'
         )
         if not real:
             body.append(
@@ -418,8 +424,8 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
     run_pages = _build_run_pages(runs_dir, runs, out_dir)
 
     # ---- runs -------------------------------------------------------------
-    body = ["<h2>All runs</h2><table><tr><th>Started</th><th>Oracle</th><th>Docs</th>"
-            "<th>Mean</th><th>Tiers</th><th>Change</th></tr>"]
+    body = ["<h2>All runs</h2><table><tr><th>Run</th><th>Started</th><th>Oracle</th>"
+            "<th>Docs</th><th>Mean</th><th>Tiers</th><th>Change</th></tr>"]
     previous = None
     for run in runs:
         mean = run["summary"].get("mean_score", 0)
@@ -432,7 +438,8 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         tiers = ", ".join(f"{k}:{v}" for k, v in sorted(run["summary"].get("by_tier", {}).items()))
         body.append(
             f'<tr><td class="mono"><a href="runs/{_esc(run["_dir"])}.html">'
-            f'{_esc(run["started"])}</a></td>'
+            f'{_esc(run["_dir"])}</a></td>'
+            f'<td class="mono mut">{_esc(run.get("started", ""))}</td>'
             f'<td class="mono">{_esc(run["oracle"])}</td>'
             f'<td class="num">{run["summary"].get("count", 0)}</td>'
             f'<td class="num">{mean:.2f}</td>'
