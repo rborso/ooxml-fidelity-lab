@@ -21,12 +21,12 @@ scripts/host/build-custom.sh "$PATCH_DIR"
 export CUSTOM_SOFFICE="${CUSTOM_SOFFICE:-$REPO/build/soffice}"
 
 echo "== 2. clean run =="
-$PY -m harness.cli run --oracle windows --renderer clean --corpus "$CORPUS" --out private/runs
+$PY -m harness.cli run --oracle windows --renderer image --corpus "$CORPUS" --out private/runs
 CLEAN=$(ls -dt private/runs/run-* | head -1)
 echo "clean: $CLEAN"
 
 echo "== 3. custom run =="
-$PY -m harness.cli run --oracle windows --renderer custom --corpus "$CORPUS" --out private/runs
+$PY -m harness.cli run --oracle windows --renderer built-patched --corpus "$CORPUS" --out private/runs
 CUSTOM=$(ls -dt private/runs/run-* | head -1)
 echo "custom: $CUSTOM"
 

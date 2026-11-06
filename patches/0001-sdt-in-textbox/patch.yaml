@@ -19,12 +19,16 @@ expected:
   after: "PASS or SEGMENT — all characters present"
 
 files:
-  - "writerfilter/source/ooxml/OOXMLFastContextHandler.cxx"
-  - "writerfilter/source/dmapper/SdtHelper.cxx"
+  - "sw/source/writerfilter/ooxml/OOXMLFastContextHandler.cxx"
+  - "sw/source/writerfilter/dmapper/SdtHelper.cxx"
 
 revert: "git apply -R fix.patch, rebuild, retag clean"
 
 notes: >
+  From 26.2 the writerfilter module is merged into sw: the dmapper lives at
+  sw/source/writerfilter/dmapper/, not the standalone writerfilter/ tree used by
+  older branches. A patch written against the old path will not apply.
+
   The shape text-body path accepts w:p and w:r but not w:sdt, so the control is
   skipped and its runs never reach the domain mapper. Attachment 138994 on the
   same bug is the same document re-saved by Word and does not lose the text,

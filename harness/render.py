@@ -82,6 +82,11 @@ ONLYOFFICE_IMAGE = "docker.io/onlyoffice/documentserver"
 CUSTOM_IMAGE = os.environ.get("CUSTOM_IMAGE")
 # Or point straight at a binary from a built source tree; no container needed.
 CUSTOM_SOFFICE = os.environ.get("CUSTOM_SOFFICE")
+# The unpatched binary from the same tree: the experiment baseline.
+CLEAN_SOFFICE = os.environ.get("CLEAN_SOFFICE")
+# Point fontconfig at a directory that mirrors the container's font bundle, so
+# a built binary is compared on engine behaviour rather than on font packaging.
+LO_FONTCONFIG = os.environ.get("LO_FONTCONFIG")
 
 
 def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -> Path:
@@ -98,6 +103,10 @@ def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -
     pdf = out_dir / (docx.stem + ".pdf")
     profile = Path(tempfile.mkdtemp(prefix="lo-profile-"))
 
+    env = os.environ.copy()
+    if LO_FONTCONFIG:
+        env["FONTCONFIG_FILE"] = LO_FONTCONFIG
+
     cmd = [
         binary,
         f"-env:UserInstallation=file://{profile}",
@@ -107,7 +116,7 @@ def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -
         str(docx),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
     except subprocess.TimeoutExpired as exc:
         raise RenderError(f"render timed out after {timeout}s: {docx.name}") from exc
     finally:
@@ -121,14 +130,36 @@ def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -
     return pdf
 
 
-def render_custom(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
-    """Render with the custom build. Always paired with a clean run."""
+def render_built_clean(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
+    """The unpatched build. The baseline a patch is compared against."""
+    if not CLEAN_SOFFICE:
+        raise RenderError(
+            "CLEAN_SOFFICE is not set: point it at the unpatched binary from the build tree"
+        )
+    return render_soffice(CLEAN_SOFFICE, docx, out_dir, timeout)
+
+
+def render_built_patched(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
+    """The patched build, from the same tree as the clean one."""
+    if not CUSTOM_SOFFICE:
+        raise RenderError(
+            "CUSTOM_SOFFICE is not set: point it at the patched binary from the build tree"
+        )
+    return render_soffice(CUSTOM_SOFFICE, docx, out_dir, timeout)
+
+
+def render_built_patched(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
+    """The patched build, from the same tree as the clean one.
+
+    Falls back to a derived container image, which is how the font patch was
+    shipped before there was a build tree to relink.
+    """
     if CUSTOM_SOFFICE:
         return render_soffice(CUSTOM_SOFFICE, docx, out_dir, timeout)
     if CUSTOM_IMAGE:
         return render_collabora(docx, out_dir, image=CUSTOM_IMAGE, timeout=timeout)
     raise RenderError(
-        "no custom build configured: set CUSTOM_SOFFICE to a binary from a built "
+        "no patched build configured: set CUSTOM_SOFFICE to a binary from a built "
         "source tree, or CUSTOM_IMAGE to a derived container image pinned by digest"
     )
 

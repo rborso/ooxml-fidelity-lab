@@ -14,8 +14,8 @@ PIP    ?= .venv/bin/pip
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv check gate run run-oracle run-clean run-custom \
-        prepare-build build batch report site serve test clean
+.PHONY: help venv check gate run run-oracle run-image run-built-clean run-custom \
+        skew prepare-build build batch report site serve test clean
 
 help:
 	@grep -E '^## ' Makefile | sed 's/^## //'
@@ -47,13 +47,21 @@ run:
 run-oracle:
 	$(LOCK) run-oracle $(PYTHON) -m harness.cli run --oracle windows --corpus $(CORPUS) --out private/runs
 
-## Baseline against the clean upstream renderer
-run-clean:
-	$(LOCK) run-clean $(PYTHON) -m harness.cli run --oracle windows --renderer clean --corpus $(CORPUS) --out private/runs
+## Baseline against the pinned upstream image (the deployed reference)
+run-image:
+	$(LOCK) run-image $(PYTHON) -m harness.cli run --oracle windows --renderer image --corpus $(CORPUS) --out private/runs
 
-## Same corpus against the custom renderer (needs CUSTOM_SOFFICE or CUSTOM_IMAGE)
+## Same corpus against the unpatched binary from the build tree (needs CLEAN_SOFFICE)
+run-built-clean:
+	$(LOCK) run-built-clean $(PYTHON) -m harness.cli run --oracle windows --renderer built-clean --corpus $(CORPUS) --out private/runs
+
+## Same corpus against the patched build (needs CUSTOM_SOFFICE or CUSTOM_IMAGE)
 run-custom:
-	$(LOCK) run-custom $(PYTHON) -m harness.cli run --oracle windows --renderer custom --corpus $(CORPUS) --out private/runs
+	$(LOCK) run-custom $(PYTHON) -m harness.cli run --oracle windows --renderer built-patched --corpus $(CORPUS) --out private/runs
+
+## One-time calibration: does the built engine match the deployed image?
+skew:
+	$(LOCK) skew scripts/host/skew.sh
 
 ## Install build dependencies and report whether this machine is adequate
 prepare-build:

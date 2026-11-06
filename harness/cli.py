@@ -65,14 +65,6 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    if args.renderer == "custom" and not (render.CUSTOM_IMAGE or render.CUSTOM_SOFFICE):
-        print(
-            "no custom build configured: set CUSTOM_SOFFICE to a binary from a built "
-            "source tree, or CUSTOM_IMAGE to a derived container image pinned by digest",
-            file=sys.stderr,
-        )
-        return 2
-
     started = _stamp()
     work = Path(args.out).resolve() / f"run-{started}"
     work.mkdir(parents=True, exist_ok=True)
@@ -106,9 +98,18 @@ def cmd_run(args: argparse.Namespace) -> int:
         else {}
     )
 
-    if args.renderer == "custom":
-        render_fn = render.render_custom
-        image_used = render.CUSTOM_SOFFICE or render.CUSTOM_IMAGE or "unset"
+    if args.renderer == "built-clean":
+        if not render.CLEAN_SOFFICE:
+            print("CLEAN_SOFFICE is not set: point it at the unpatched build", file=sys.stderr)
+            return 2
+        render_fn = render.render_built_clean
+        image_used = render.CLEAN_SOFFICE
+    elif args.renderer == "built-patched":
+        if not render.CUSTOM_SOFFICE:
+            print("CUSTOM_SOFFICE is not set: point it at the patched build", file=sys.stderr)
+            return 2
+        render_fn = render.render_built_patched
+        image_used = render.CUSTOM_SOFFICE
     else:
         render_fn = render.render_collabora
         image_used = render.COLLABORA_IMAGE
@@ -506,7 +507,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
-    r.add_argument("--renderer", default="clean", choices=["clean", "custom"])
+    r.add_argument("--renderer", default="image",
+                   choices=["image", "built-clean", "built-patched"])
     r.add_argument("--domain", default="win11-0")
     r.add_argument("--boot-timeout", type=int, default=900)
     r.set_defaults(func=cmd_run)
