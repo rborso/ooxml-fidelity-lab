@@ -89,3 +89,22 @@ def test_write_png_is_a_png(tmp_path: Path):
     end = data.index(b"IEND") - 8
     raw = zlib.decompress(data[start:end])
     assert len(raw) == 2 * (1 + 2 * 3)
+
+
+def test_pattern_separates_raster_from_structure():
+    # Thin ink spread over a wide box: a substituted font.
+    assert pixels.pattern(0.05, 100) == "diffuse"
+    # Most of a small box changed: a moved block or a missing image.
+    assert pixels.pattern(0.60, 100) == "concentrated"
+    assert pixels.pattern(0.0, 0) == "none"
+
+
+def test_density_is_measured_in_the_bbox():
+    ref = (10, 10, bytes([255] * 100))
+    cand = bytearray(ref[2])
+    for x in range(4):          # a 4x1 line -> bbox area 4
+        cand[x] = 0
+    d = pixels.diff_pages(ref, (10, 10, bytes(cand)))
+    assert d["changed"] == 4
+    assert d["density"] == pytest.approx(1.0)
+    assert pixels.pattern(d["density"], d["changed"]) == "concentrated"

@@ -26,7 +26,7 @@ done)}
 [ -n "$REF" ] || { echo "no run with reference PDFs found" >&2; exit 1; }
 
 export PYTHONUNBUFFERED=1
-say() { printf '\n== %s\n' "$*"; }
+say() { printf "\n== %s\n" "$*" >&2; }
 
 lane() {  # name renderer [binary]
   local name=$1 renderer=$2 binary=${3:-}

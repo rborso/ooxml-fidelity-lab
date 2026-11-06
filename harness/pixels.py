@@ -133,11 +133,28 @@ def diff_pages(ref: tuple[int, int, bytes], cand: tuple[int, int, bytes],
                     max_y = y
     total = rw * rh
     bbox = None
+    density = 0.0
     if changed:
         bbox = [round(min_x / rw, 4), round(min_y / rh, 4),
                 round((max_x + 1) / rw, 4), round((max_y + 1) / rh, 4)]
+        box_area = (max_x - min_x + 1) * (max_y - min_y + 1)
+        density = changed / box_area if box_area else 0.0
     return {"size": None, "fraction": changed / total, "bbox": bbox,
+            "density": round(density, 4),
             "changed": changed, "pixels": total}
+
+
+def pattern(density: float, changed: int) -> str:
+    """Diffuse or concentrated.
+
+    A substituted font changes a few pixels in every glyph: the changed region
+    covers the whole text block but the ink inside it is thin. A moved block, a
+    missing image or a wrong rule changes most pixels inside a small region.
+    Same changed fraction, very different complaint.
+    """
+    if not changed:
+        return "none"
+    return "diffuse" if density < 0.20 else "concentrated"
 
 
 def severity(fraction: float) -> str:
@@ -172,9 +189,12 @@ def compare(ref_pdf: Path, cand_pdf: Path, dpi: int = DPI,
         d = diff_pages(ref, cand)
         pages.append({"page": number, "fraction": round(d["fraction"], 6),
                       "bbox": d["bbox"], "size": d["size"],
+                      "density": d.get("density", 0.0),
+                      "pattern": pattern(d.get("density", 0.0), d.get("changed", 0)),
                       "severity": severity(d["fraction"])})
 
     worst = max((p.get("fraction", 0.0) for p in pages), default=0.0)
+    worst_page = max(pages, key=lambda p: p.get("fraction", 0.0)) if pages else {}
     counts: dict[str, int] = {}
     for p in pages:
         counts[p["severity"]] = counts.get(p["severity"], 0) + 1
@@ -183,6 +203,7 @@ def compare(ref_pdf: Path, cand_pdf: Path, dpi: int = DPI,
         "pages_cand": n_cand,
         "pages": pages,
         "worst": round(worst, 6),
+        "pattern": worst_page.get("pattern", "none"),
         "severity": "major" if n_ref != n_cand and worst < MAJOR else severity(worst),
         "counts": counts,
     }

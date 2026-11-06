@@ -122,6 +122,16 @@ def _sev_badge(sev: str) -> str:
     return f'<span class="badge {SEV_CLASS.get(sev, "warn")}">{_esc(sev or "n/a")}</span>'
 
 
+def _visual(doc: dict) -> tuple[str, float | None, str]:
+    """Severity derived from the stored fraction, so band changes apply to old runs."""
+    v = doc.get("visual") or {}
+    if not v:
+        return "", None, ""
+    worst = v.get("worst")
+    sev = pixels.severity(worst) if isinstance(worst, (int, float)) else v.get("severity", "")
+    return sev, worst, v.get("pattern", "")
+
+
 def _page(title: str, active: str, body: str, prefix: str = "") -> str:
     nav = [
         ("index.html", "Overview", "index"),
@@ -280,10 +290,12 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
             body.append(f'<div class="note">{_esc(error)}</div>')
         visual = doc.get("visual") or {}
         if visual:
+            sev, worst, pat = _visual(doc)
             body.append(
-                f'<p>Visual: {_sev_badge(visual.get("severity", ""))}'
-                f' &middot; worst page {float(visual.get("worst", 0)) * 100:.2f}% pixels changed'
-                f' &middot; {visual.get("pages_ref", "?")} vs {visual.get("pages_cand", "?")} pages</p>'
+                f'<p>Visual: {_sev_badge(sev)}'
+                f' &middot; worst page {float(worst or 0) * 100:.2f}% pixels changed'
+                + (f' &middot; {_esc(pat)}' if pat and pat != "none" else "")
+                + f' &middot; {visual.get("pages_ref", "?")} vs {visual.get("pages_cand", "?")} pages</p>'
             )
         t0 = doc.get("t0") or {}
         for entry in (t0.get("missing_detail") or [])[:3]:
@@ -484,8 +496,9 @@ def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path,
                 continue
             link = f"documents/{_esc(lanes[name])}/{_esc(doc_id)}.html"
             vis = (doc.get("visual") or {}).get("severity")
+            sev, worst, pat = _visual(doc)
             cells.append(f'<td><a href="{link}">{_badge(doc["tier"])}</a>'
-                         + (f' {_sev_badge(vis)}' if vis else "") + "</td>")
+                         + (f' {_sev_badge(sev)}' if sev else "") + "</td>")
         head = "".join(f"<th>{_esc(LANE_LABELS.get(n, n))}</th>" for n in names)
         strip = []
         ref_pdf, _ = _find_pdfs(runs_dir / lanes[names[0]], doc_id)
@@ -570,10 +583,10 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
             detail = doc.get("error") or ""
             link = f"documents/{_esc(latest['_dir'])}/{_esc(doc['id'])}.html"
             vis = (doc.get("visual") or {}).get("severity", "")
-            worst = (doc.get("visual") or {}).get("worst")
-            vis_cell = (_sev_badge(vis) + (f' <span class="mut num">{worst * 100:.2f}%</span>'
+            sev, worst, pat = _visual(doc)
+            vis_cell = (_sev_badge(sev) + (f' <span class="mut num">{worst * 100:.2f}%</span>'
                                            if isinstance(worst, (int, float)) else "")
-                        if vis else '<span class="mut">&mdash;</span>')
+                        if sev else '<span class="mut">&mdash;</span>')
             body.append(
                 "<tr>"
                 f'<td class="mono"><a href="{link}">{_esc(doc["id"])}</a></td>'
