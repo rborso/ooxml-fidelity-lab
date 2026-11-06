@@ -14,7 +14,7 @@ set -euo pipefail
 
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 PY=$REPO/.venv/bin/python
-CORPUS=${CORPUS:-private/corpus/public}
+CORPUS=${CORPUS:-private/corpus/manifest.yaml}
 GELASIO=$REPO/patches/0002-gelasio-font/fonts
 FONTS=$REPO/private/fonts/container
 CONF=$REPO/private/fonts/fonts.conf

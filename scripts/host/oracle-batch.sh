@@ -81,6 +81,7 @@ attach rw
 log "staging $(find "$IN" -maxdepth 1 -mindepth 1 -type d | wc -l) job(s)"
 sudo -n rm -rf "$MOUNT/work/in" "$MOUNT/work/out"
 sudo -n mkdir -p "$MOUNT/work/in" "$MOUNT/work/out"
+n_jobs=0
 for job in "$IN"/*/; do
   # Any document.*, not just .docx: legacy .doc is part of the corpus and
   # cannot be renamed to .docx without Word parsing it as OOXML.
@@ -89,20 +90,26 @@ for job in "$IN"/*/; do
   name=$(basename "$job")
   sudo -n mkdir -p "$MOUNT/work/in/$name"
   sudo -n cp "$src" "$MOUNT/work/in/$name/$(basename "$src")"
+  n_jobs=$((n_jobs + 1))
 done
 sudo -n rm -f "$MOUNT/work/agent/agent.log"
 detach
 
 # ---- run -------------------------------------------------------------------
-log "booting $DOMAIN"
+# BOOT_TIMEOUT covers boot only. Word needs time per document, and the guest is
+# offline so there is no signal between "booted" and "powered off"; the deadline
+# has to assume the worst case for every job or a large corpus reads as a hang.
+PER_DOC=${ORACLE_PER_DOC:-30}
+limit=$(( BOOT_TIMEOUT + PER_DOC * n_jobs ))
+log "booting $DOMAIN ($n_jobs jobs, ${limit}s limit)"
 sudo -n virsh start "$DOMAIN" >/dev/null || die "start failed"
-deadline=$(( $(date +%s) + BOOT_TIMEOUT ))
+deadline=$(( $(date +%s) + limit ))
 while :; do
   if [ "$(domstate)" = "shut off" ]; then
     log "oracle finished and powered off"
     break
   fi
-  [ "$(date +%s)" -ge "$deadline" ] && die "timed out after ${BOOT_TIMEOUT}s"
+  [ "$(date +%s)" -ge "$deadline" ] && die "timed out after ${limit}s for $n_jobs job(s)"
   sleep 3
 done
 
