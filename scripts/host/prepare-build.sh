@@ -22,11 +22,13 @@ echo "verdict: $verdict"
 echo "== packages =="
 PKGS="gcc gcc-c++ make autoconf automake bison flex gperf pkgconf-pkg-config \
 git curl wget which perl-core python3-devel zip unzip ccache \
+patch libtool perl-Archive-Zip meson ninja-build \
 fontconfig-devel freetype-devel libX11-devel libXext-devel libXrender-devel \
 libICE-devel libSM-devel cups-devel dbus-devel expat-devel \
 libjpeg-turbo-devel libpng-devel libxml2-devel libxslt-devel \
 openssl-devel zlib-devel ncurses-devel libcurl-devel \
 gtk3-devel cairo-devel pango-devel gdk-pixbuf2-devel \
+nss-devel nspr-devel \
 libXinerama-devel libXrandr-devel libXfixes-devel"
 
 failed=""
