@@ -361,12 +361,14 @@ LANE_LABELS = {
 }
 
 
-def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path) -> int:
+def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path,
+                        runs_dir: Path, pages: int = 2) -> int:
     """Three lanes against one Word baseline, one row per document.
 
     Only documents that do not agree are listed: on a 325-document corpus the
     agreement is the boring part, and a page of identical rows hides the ones
-    worth looking at.
+    worth looking at. Each disagreement carries the rendered pages, Word
+    included, so a tier change can be looked at rather than argued about.
     """
     by_id = {run["_dir"]: run for run in runs}
     names = [n for n in ("upstream", "built-clean", "built-custom") if lanes.get(n) in by_id]
@@ -407,12 +409,22 @@ def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path) -> int:
         )
     body.append("</table>")
 
-    diffs, identical = [], 0
+    differing = []
+    identical = 0
     for doc_id in ids:
         vals = [tiers[n].get(doc_id, {}).get("tier") for n in names]
         if len({v for v in vals if v}) <= 1:
             identical += 1
             continue
+        differing.append(doc_id)
+
+    body.append(f"<h2>Where the lanes disagree ({len(differing)})</h2>")
+    body.append(f'<p class="mut">{identical} of {len(ids)} documents score identically across '
+                f'all {len(names)} lanes. Open a document to see the pages.</p>')
+
+    # Word output is shared: every lane is scored against the same reference,
+    # so it is shown once per document rather than once per lane.
+    for doc_id in differing:
         cells = []
         for name in names:
             doc = tiers[name].get(doc_id)
@@ -421,19 +433,38 @@ def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path) -> int:
                 continue
             link = f"documents/{_esc(lanes[name])}/{_esc(doc_id)}.html"
             cells.append(f'<td><a href="{link}">{_badge(doc["tier"])}</a></td>')
-        diffs.append(f'<tr><td class="mono">{_esc(doc_id)}</td>' + "".join(cells) + "</tr>")
-
-    body.append(f'<h2>Where the lanes disagree ({len(diffs)})</h2>')
-    body.append(f'<p class="mut">{identical} of {len(ids)} documents score identically across '
-                f'all {"three" if len(names) == 3 else "both"} lanes.</p>')
-    if diffs:
         head = "".join(f"<th>{_esc(LANE_LABELS.get(n, n))}</th>" for n in names)
-        body.append(f"<table><tr><th>Document</th>{head}</tr>" + "".join(diffs) + "</table>")
-    else:
-        body.append('<p class="mut">No differences.</p>')
+        strip = []
+        ref_pdf, _ = _find_pdfs(runs_dir / lanes[names[0]], doc_id)
+        if ref_pdf:
+            imgs = _page_images(ref_pdf, out_dir / "media" / lanes[names[0]] / doc_id,
+                                "word", max_pages=pages)
+            base = f"media/{lanes[names[0]]}/{doc_id}"
+            figs = "".join(f'<figure><img src="{base}/{i}" alt="Word page" loading="lazy"></figure>'
+                           for i in imgs)
+            strip.append(f'<figure><figcaption>Microsoft Word</figcaption>{figs}</figure>')
+        for name in names:
+            _, cand_pdf = _find_pdfs(runs_dir / lanes[name], doc_id)
+            if not cand_pdf:
+                strip.append(f'<figure><figcaption>{_esc(LANE_LABELS.get(name, name))}</figcaption>'
+                             f'<p class="mut">not rendered</p></figure>')
+                continue
+            imgs = _page_images(cand_pdf, out_dir / "media" / lanes[name] / doc_id,
+                                "cand", max_pages=pages)
+            base = f"media/{lanes[name]}/{doc_id}"
+            figs = "".join(f'<figure><img src="{base}/{i}" alt="{_esc(name)} page" loading="lazy"></figure>'
+                           for i in imgs)
+            strip.append(f'<figure><figcaption>{_esc(LANE_LABELS.get(name, name))}</figcaption>{figs}</figure>')
+        body.append(
+            f'<details class="fam"><summary><span class="mono">{_esc(doc_id)}</span> &nbsp;'
+            f'{"".join(cells[0:1])}</summary>'
+            f'<table><tr><th>Document</th>{head}</tr><tr><td class="mono">{_esc(doc_id)}</td>'
+            f'{"".join(cells)}</tr></table>'
+            f'<div class="cols">{"".join(strip)}</div></details>'
+        )
 
     (out_dir / "compare.html").write_text(_page("Compare", "compare", "\n".join(body)))
-    return len(diffs)
+    return len(differing)
 
 
 def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None = None) -> dict:
@@ -445,7 +476,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
     runs = load_runs(runs_dir)
     families = load_families(families_dir)
     latest = runs[-1] if runs else None
-    compare_diffs = _build_compare_page(runs, lanes or {}, out_dir)
+    compare_diffs = _build_compare_page(runs, lanes or {}, out_dir, runs_dir)
 
     # ---- overview ---------------------------------------------------------
     body = []

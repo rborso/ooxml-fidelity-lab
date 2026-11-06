@@ -70,3 +70,32 @@ Acceptance: the reproducer improves **and** no other document's tier drops.
 Draft. No `fix.patch` yet — the patch requires a LibreOffice source tree and a build, which
 this environment does not have. The metadata, reproducer, acceptance test and reversal are
 in place so the fix can be applied and measured without redesigning anything.
+
+## Attempts (2026-11-06)
+
+Two variants were built and measured; neither changed the rendering. Recorded
+here so they are not repeated.
+
+1. Guard `setControlType(plainText)` at `LN_CT_SdtBlock_sdtContent` with
+   `!IsInShape()`. No effect: `<w:text>` in `sdtPr` already sets `plainText`
+   earlier (DomainMapper.cxx:3428), so the `unknown` branch never runs.
+2. Force `SdtControlType::unsupported` whenever `IsInShape()`. No effect.
+
+Control experiments on `bz31914-sdt-textbox` (VML `v:rect` → `v:textbox` →
+`w:txbxContent`):
+
+| variant | "CME Offshore" in PDF |
+|---|---|
+| original | no |
+| plain paragraph inserted into the same `txbxContent` | **yes** |
+| `w:dataBinding` removed from the `sdt` | no |
+
+So the shape text body is imported correctly and the data binding is not the
+cause; the `w:sdt` subtree itself disappears. It is therefore lost before the
+domain mapper sees it, most likely in the VML textbox path: `ShadowContext`
+records every child, and the replay runs through
+`OOXMLFastContextHandlerWrapper::lcl_createFastChildContext`, where the
+namespace/token sets decide whether an element goes to writerfilter or to oox.
+
+Next step is an instrumented run of that replay path, not another guess at the
+dmapper.

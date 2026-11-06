@@ -14,7 +14,7 @@ PIP    ?= .venv/bin/pip
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv check gate run run-oracle run-image run-built-clean run-custom \
+.PHONY: help venv check gate run run-stub run-oracle run-image run-built-clean run-custom \
         skew prepare-build build batch report site serve test clean
 
 help:
@@ -39,11 +39,15 @@ CORPUS ?= private/corpus/manifest.yaml
 PATCH  ?= patches/0001-sdt-in-textbox
 LOCK   := scripts/host/lab-lock.sh
 
-## Render the corpus and score it (synthetic docs when --corpus is omitted)
+## DEFAULT: every document through all three lanes (needs a built tree)
 run:
-	$(LOCK) run $(PYTHON) -m harness.cli run --out private/runs
+	$(LOCK) run scripts/host/three-lane.sh
 
-## Same, but with the real Windows oracle (boots the VM, renders offline)
+## Pipeline smoke test with the stub oracle; no VM and no build tree needed
+run-stub:
+	$(LOCK) run-stub $(PYTHON) -m harness.cli run --out private/runs
+
+## Single lane with the real Windows oracle (boots the VM, renders offline)
 run-oracle:
 	$(LOCK) run-oracle $(PYTHON) -m harness.cli run --oracle windows --corpus $(CORPUS) --out private/runs
 
@@ -71,7 +75,7 @@ prepare-build:
 build:
 	$(LOCK) build scripts/host/build-custom.sh $(PATCH)
 
-## One patch, full cycle: build, clean run, custom run, validate
+## One patch, full cycle: build custom, then all three lanes
 batch:
 	$(LOCK) batch scripts/host/batch.sh $(PATCH)
 
