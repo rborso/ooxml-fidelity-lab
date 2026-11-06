@@ -65,6 +65,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
+    if args.renderer == "custom" and not render.CUSTOM_IMAGE:
+        print(
+            "CUSTOM_IMAGE is not set: build the custom image (see patches/README.md), "
+            "tag it by digest, and export CUSTOM_IMAGE=<image@sha256:...>",
+            file=sys.stderr,
+        )
+        return 2
+
     started = _stamp()
     work = Path(args.out).resolve() / f"run-{started}"
     work.mkdir(parents=True, exist_ok=True)
