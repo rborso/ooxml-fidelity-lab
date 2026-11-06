@@ -130,6 +130,21 @@ turns a useful report into a wall of red.
 Font substitution report is emitted alongside T2: which font names were requested,
 which were found, which were substituted.
 
+**The visual axis (T3), implemented.** Every document also carries a pixel verdict,
+independent of the text tiers: both PDFs rasterised at 72 dpi, compared per page, and
+reported as changed fraction plus bounding box plus a red-on-grey heatmap. It is a
+separate axis rather than a tier because "the text is right" and "it looks right" are
+different questions, and collapsing them hides one behind the other.
+
+Bands are measured, not chosen: PASS documents peak at 1.69% changed pixels (metric
+compatible fonts are never pixel-identical), T1 medians at 6.9%. So `<0.1%` is noise,
+`<2%` is minor, `<8%` is visible, above is major. The same-binary control returns
+exactly 0.0, so the metric has a zero floor and any non-zero value is the other engine.
+
+What it sees that text cannot: borders, fills, shading, images, and glyph-level
+differences such as a wrong weight or a distorted curve. What it still cannot see is
+meaning — a content control imported as plain text keeps every pixel of its text.
+
 ### 3.6 Scorer
 - Per-document: `score = f(T0, T1, T2)` — T0 failure caps the score at 0.
 - Per-class aggregate: distribution, not mean. Report p50 / p95 and the count of fatal

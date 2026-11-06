@@ -21,7 +21,12 @@ minimal reproducer stays a hypothesis.
 ## Evidence
 
 The artifacts that prove it: minimal repro path, synthetic case, extracted layout tree,
-font list, diff excerpt.
+font list, diff excerpt, pixel heatmap.
+
+**No patch without a trace.** The Evidence section must name the junction — the function
+and branch where the document loses its content or shape — from `SAL_LOG` output, a
+control experiment, or commit history. A plausible story is not evidence; two plausible
+stories for family 0004 both cost an afternoon and fixed nothing. See `docs/DOCTOR.md`.
 
 ## Reproduce
 
