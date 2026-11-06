@@ -32,10 +32,10 @@ def _get_json(url: str) -> dict:
     return json.loads(_get(url).decode("utf-8", "replace"))
 
 
-def search(base: str, query: str, limit: int) -> list[dict]:
+def search(base: str, query: str, limit: int, offset: int = 0) -> list[dict]:
     url = (
         f"{base}/rest/bug?quicksearch={urllib.parse.quote(query)}"
-        f"&limit={limit}&include_fields=id,summary,status,resolution"
+        f"&limit={limit}&offset={offset}&include_fields=id,summary,status,resolution"
     )
     return _get_json(url).get("bugs", [])
 
@@ -77,13 +77,19 @@ def fetch(
     query: str = "docx",
     delay: float = 0.4,
     verbose: bool = True,
+    pages: int = 1,
 ) -> list[dict]:
     """Download DOCX attachments and return manifest entries."""
     out_dir.mkdir(parents=True, exist_ok=True)
     entries: list[dict] = []
     seen_hashes: set[str] = set()
 
-    bugs = search(base, query, limit * 3)
+    bugs: list[dict] = []
+    for page in range(max(1, pages)):
+        batch = search(base, query, limit * 3, offset=page * limit * 3)
+        if not batch:
+            break
+        bugs.extend(batch)
     if verbose:
         print(f"bugs returned: {len(bugs)}")
 
@@ -180,7 +186,8 @@ def _entry(bug: dict, att: dict, target: Path, digest: str, url: str) -> dict:
 
 
 def to_yaml(entries: list[dict]) -> str:
+    """Manifest fragment. Provenance is kept: an item without a source URL
+    cannot be used in a published corpus."""
     import yaml
 
-    items = [{k: v for k, v in e.items() if k != "url"} for e in entries]
-    return yaml.safe_dump({"items": items}, sort_keys=False, allow_unicode=True)
+    return yaml.safe_dump({"items": entries}, sort_keys=False, allow_unicode=True)

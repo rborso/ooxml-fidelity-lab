@@ -322,6 +322,41 @@ def cmd_extract(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_harvest(args: argparse.Namespace) -> int:
+    import yaml
+
+    from .harvest import harvest
+
+    corpus_dir = Path(args.corpus_dir).resolve()
+    out_dir = Path(args.out).resolve()
+    entries = harvest(
+        args.page,
+        out_dir,
+        prefix=args.prefix,
+        limit=args.limit,
+        delay=args.delay,
+    )
+    for entry in entries:
+        entry["path"] = str(Path(entry["path"]).resolve().relative_to(corpus_dir))
+
+    sidecar = corpus_dir / f"{args.prefix}.yaml"
+    previous: list[dict] = []
+    if sidecar.exists():
+        previous = (yaml.safe_load(sidecar.read_text()) or {}).get("items") or []
+    merged = {item["id"]: item for item in previous}
+    for entry in entries:
+        merged[entry["id"]] = entry
+    sidecar.write_text(
+        yaml.safe_dump(
+            {"items": [merged[key] for key in sorted(merged)]},
+            sort_keys=False,
+            allow_unicode=True,
+        )
+    )
+    print(f"{len(merged)} item(s) in {sidecar}")
+    return 0
+
+
 def cmd_freeze(args: argparse.Namespace) -> int:
     from .corpus import holdout_digest
 
@@ -421,6 +456,7 @@ def cmd_fetch(args: argparse.Namespace) -> int:
         limit=args.limit,
         query=args.query,
         delay=args.delay,
+        pages=args.pages,
     )
     fragment = Path(args.out) / "manifest-fragment.yaml"
     fragment.write_text(to_yaml(entries))
@@ -546,6 +582,15 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--base", default="https://bugs.documentfoundation.org")
     f.add_argument("--delay", type=float, default=0.4)
     f.set_defaults(func=cmd_fetch)
+
+    hv = sub.add_parser("harvest", help="collect documents linked from a public page")
+    hv.add_argument("--page", required=True)
+    hv.add_argument("--out", required=True)
+    hv.add_argument("--corpus-dir", default="private/corpus")
+    hv.add_argument("--prefix", required=True)
+    hv.add_argument("--limit", type=int, default=25)
+    hv.add_argument("--delay", type=float, default=0.5)
+    hv.set_defaults(func=cmd_harvest)
 
     return p
 

@@ -23,6 +23,9 @@ class Item:
     sha256: str | None = None
     tags: list[str] = field(default_factory=list)
     licence: str | None = None
+    source_url: str | None = None
+    found_on: str | None = None
+    notes: str | None = None
 
     @property
     def exists(self) -> bool:
@@ -45,11 +48,16 @@ def load(manifest: Path) -> tuple[int, list[Item]]:
     seen: set[str] = set()
 
     raw_items = list(data.get("items") or [])
-    # Derived items live beside the manifest in their own file so that
-    # regenerating the fetched manifest does not lose them.
-    derived = manifest.parent / "derived.yaml"
-    if derived.exists():
-        extra = (yaml.safe_load(derived.read_text()) or {}).get("items") or []
+    # Sidecar files hold items that must survive a regeneration of the fetched
+    # manifest: derived reproducers, synthetic known-good controls, harvested
+    # public documents. overrides.yaml is tolerances, not items.
+    for extra_file in sorted(manifest.parent.glob("*.yaml")):
+        if extra_file.name in ("manifest.yaml", "overrides.yaml"):
+            continue
+        try:
+            extra = (yaml.safe_load(extra_file.read_text()) or {}).get("items") or []
+        except yaml.YAMLError:
+            continue
         raw_items.extend(extra)
 
     for raw in raw_items:
@@ -69,6 +77,9 @@ def load(manifest: Path) -> tuple[int, list[Item]]:
                 sha256=raw.get("sha256"),
                 tags=list(raw.get("tags") or []),
                 licence=raw.get("licence"),
+                source_url=raw.get("source_url") or raw.get("url"),
+                found_on=raw.get("found_on"),
+                notes=raw.get("notes"),
             )
         )
     return int(data.get("corpus_version", 0)), items
