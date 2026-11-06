@@ -65,10 +65,10 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    if args.renderer == "custom" and not render.CUSTOM_IMAGE:
+    if args.renderer == "custom" and not (render.CUSTOM_IMAGE or render.CUSTOM_SOFFICE):
         print(
-            "CUSTOM_IMAGE is not set: build the custom image (see patches/README.md), "
-            "tag it by digest, and export CUSTOM_IMAGE=<image@sha256:...>",
+            "no custom build configured: set CUSTOM_SOFFICE to a binary from a built "
+            "source tree, or CUSTOM_IMAGE to a derived container image pinned by digest",
             file=sys.stderr,
         )
         return 2
@@ -108,7 +108,7 @@ def cmd_run(args: argparse.Namespace) -> int:
 
     if args.renderer == "custom":
         render_fn = render.render_custom
-        image_used = render.CUSTOM_IMAGE or "unset (CUSTOM_IMAGE)"
+        image_used = render.CUSTOM_SOFFICE or render.CUSTOM_IMAGE or "unset"
     else:
         render_fn = render.render_collabora
         image_used = render.COLLABORA_IMAGE

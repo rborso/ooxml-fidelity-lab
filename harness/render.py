@@ -80,16 +80,57 @@ ONLYOFFICE_IMAGE = "docker.io/onlyoffice/documentserver"
 
 # Set to a locally built image tagged by digest to measure a patch.
 CUSTOM_IMAGE = os.environ.get("CUSTOM_IMAGE")
+# Or point straight at a binary from a built source tree; no container needed.
+CUSTOM_SOFFICE = os.environ.get("CUSTOM_SOFFICE")
+
+
+def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -> Path:
+    """Convert with a soffice binary from a build tree.
+
+    A throwaway user profile per document stops state leaking between documents,
+    the same reason the Windows agent starts a fresh Word each time.
+    """
+    import tempfile
+
+    docx = docx.resolve()
+    out_dir = out_dir.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pdf = out_dir / (docx.stem + ".pdf")
+    profile = Path(tempfile.mkdtemp(prefix="lo-profile-"))
+
+    cmd = [
+        binary,
+        f"-env:UserInstallation=file://{profile}",
+        "--headless", "--norestore",
+        "--convert-to", "pdf",
+        "--outdir", str(out_dir),
+        str(docx),
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise RenderError(f"render timed out after {timeout}s: {docx.name}") from exc
+    finally:
+        shutil.rmtree(profile, ignore_errors=True)
+
+    if not pdf.exists():
+        raise RenderError(
+            f"no PDF produced for {docx.name} (exit {proc.returncode})\n"
+            f"{(proc.stderr or proc.stdout)[-800:]}"
+        )
+    return pdf
 
 
 def render_custom(docx: Path, out_dir: Path, timeout: int = 180) -> Path:
-    """Render with the custom build. Always paired with a clean build run."""
-    if not CUSTOM_IMAGE:
-        raise RenderError(
-            "CUSTOM_IMAGE is not set: build the custom image (see patches/README.md), "
-            "tag it by digest, and export CUSTOM_IMAGE=<image@sha256:...>"
-        )
-    return render_collabora(docx, out_dir, image=CUSTOM_IMAGE, timeout=timeout)
+    """Render with the custom build. Always paired with a clean run."""
+    if CUSTOM_SOFFICE:
+        return render_soffice(CUSTOM_SOFFICE, docx, out_dir, timeout)
+    if CUSTOM_IMAGE:
+        return render_collabora(docx, out_dir, image=CUSTOM_IMAGE, timeout=timeout)
+    raise RenderError(
+        "no custom build configured: set CUSTOM_SOFFICE to a binary from a built "
+        "source tree, or CUSTOM_IMAGE to a derived container image pinned by digest"
+    )
 
 
 def onlyoffice_available(url: str | None = None) -> tuple[bool, str]:

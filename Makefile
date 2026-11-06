@@ -35,22 +35,36 @@ gate:
 	$(PYTHON) -m harness.cli gate --workdir private/runs/gate
 
 CORPUS ?= private/corpus/manifest.yaml
+PATCH  ?= patches/0001-sdt-in-textbox
+LOCK   := scripts/host/lab-lock.sh
 
 ## Render the corpus and score it (synthetic docs when --corpus is omitted)
 run:
-	$(PYTHON) -m harness.cli run --out private/runs
+	$(LOCK) run $(PYTHON) -m harness.cli run --out private/runs
 
 ## Same, but with the real Windows oracle (boots the VM, renders offline)
 run-oracle:
-	$(PYTHON) -m harness.cli run --oracle windows --corpus $(CORPUS) --out private/runs
+	$(LOCK) run-oracle $(PYTHON) -m harness.cli run --oracle windows --corpus $(CORPUS) --out private/runs
 
 ## Baseline against the clean upstream renderer
 run-clean:
-	$(PYTHON) -m harness.cli run --oracle windows --renderer clean --corpus $(CORPUS) --out private/runs
+	$(LOCK) run-clean $(PYTHON) -m harness.cli run --oracle windows --renderer clean --corpus $(CORPUS) --out private/runs
 
-## Same corpus against the custom renderer (requires CUSTOM_IMAGE)
+## Same corpus against the custom renderer (needs CUSTOM_SOFFICE or CUSTOM_IMAGE)
 run-custom:
-	$(PYTHON) -m harness.cli run --oracle windows --renderer custom --corpus $(CORPUS) --out private/runs
+	$(LOCK) run-custom $(PYTHON) -m harness.cli run --oracle windows --renderer custom --corpus $(CORPUS) --out private/runs
+
+## Install build dependencies and report whether this machine is adequate
+prepare-build:
+	scripts/host/prepare-build.sh
+
+## Apply one patch and rebuild (needs LO_SRC; takes the lab lock)
+build:
+	$(LOCK) build scripts/host/build-custom.sh $(PATCH)
+
+## One patch, full cycle: build, clean run, custom run, validate
+batch:
+	$(LOCK) batch scripts/host/batch.sh $(PATCH)
 
 ## Re-render the report for the most recent run
 report:
