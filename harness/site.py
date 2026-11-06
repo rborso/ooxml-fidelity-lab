@@ -110,6 +110,7 @@ def _page(title: str, active: str, body: str, prefix: str = "") -> str:
     nav = [
         ("index.html", "Overview", "index"),
         ("runs.html", "Runs", "runs"),
+        ("compare.html", "Compare", "compare"),
         ("baseline.html", "Baseline", "baseline"),
         ("families.html", "Families", "families"),
     ]
@@ -353,7 +354,89 @@ def _build_run_pages(runs_dir: Path, runs: list[dict], out_dir: Path) -> int:
     return built
 
 
-def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
+LANE_LABELS = {
+    "upstream": "upstream image",
+    "built-clean": "built-clean",
+    "built-custom": "built-custom",
+}
+
+
+def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path) -> int:
+    """Three lanes against one Word baseline, one row per document.
+
+    Only documents that do not agree are listed: on a 325-document corpus the
+    agreement is the boring part, and a page of identical rows hides the ones
+    worth looking at.
+    """
+    by_id = {run["_dir"]: run for run in runs}
+    names = [n for n in ("upstream", "built-clean", "built-custom") if lanes.get(n) in by_id]
+    if len(names) < 2:
+        return 0
+
+    tiers = {name: {d["id"]: d for d in by_id[lanes[name]]["documents"]} for name in names}
+    ids = sorted(set().union(*[set(t) for t in tiers.values()]))
+
+    body = [
+        '<p class="mut">The same corpus rendered three ways and scored against '
+        'one set of Microsoft Word reference PDFs. Deltas here are renderer '
+        'differences, not oracle variance.</p>',
+        '<div class="cards">',
+        f'<div class="card"><div class="n">{len(ids)}</div><div class="l">documents</div></div>',
+    ]
+    for name in names:
+        run = by_id[lanes[name]]
+        body.append(
+            f'<div class="card"><div class="n">{run["summary"].get("mean_score", 0):.3f}</div>'
+            f'<div class="l">{_esc(LANE_LABELS.get(name, name))}</div></div>'
+        )
+    body.append("</div>")
+
+    body.append("<h2>Lanes</h2><table><tr><th>Lane</th><th>Run</th><th>Documents</th>"
+                "<th>Passing</th><th>T0</th><th>Mean</th></tr>")
+    for name in names:
+        run = by_id[lanes[name]]
+        s = run["summary"]
+        t = s.get("by_tier", {})
+        body.append(
+            f'<tr><td>{_esc(LANE_LABELS.get(name, name))}</td>'
+            f'<td><a class="mono" href="runs/{_esc(run["_dir"])}.html">{_esc(run["_dir"])}</a></td>'
+            f'<td class="num">{s.get("count", 0)}</td>'
+            f'<td class="num">{t.get("PASS", 0)}</td>'
+            f'<td class="num">{t.get("T0", 0)}</td>'
+            f'<td class="num">{s.get("mean_score", 0):.3f}</td></tr>'
+        )
+    body.append("</table>")
+
+    diffs, identical = [], 0
+    for doc_id in ids:
+        vals = [tiers[n].get(doc_id, {}).get("tier") for n in names]
+        if len({v for v in vals if v}) <= 1:
+            identical += 1
+            continue
+        cells = []
+        for name in names:
+            doc = tiers[name].get(doc_id)
+            if not doc:
+                cells.append('<td class="mut">&mdash;</td>')
+                continue
+            link = f"documents/{_esc(lanes[name])}/{_esc(doc_id)}.html"
+            cells.append(f'<td><a href="{link}">{_badge(doc["tier"])}</a></td>')
+        diffs.append(f'<tr><td class="mono">{_esc(doc_id)}</td>' + "".join(cells) + "</tr>")
+
+    body.append(f'<h2>Where the lanes disagree ({len(diffs)})</h2>')
+    body.append(f'<p class="mut">{identical} of {len(ids)} documents score identically across '
+                f'all {"three" if len(names) == 3 else "both"} lanes.</p>')
+    if diffs:
+        head = "".join(f"<th>{_esc(LANE_LABELS.get(n, n))}</th>" for n in names)
+        body.append(f"<table><tr><th>Document</th>{head}</tr>" + "".join(diffs) + "</table>")
+    else:
+        body.append('<p class="mut">No differences.</p>')
+
+    (out_dir / "compare.html").write_text(_page("Compare", "compare", "\n".join(body)))
+    return len(diffs)
+
+
+def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "assets").mkdir(exist_ok=True)
     (out_dir / "assets" / "style.css").write_text(CSS.strip() + "\n")
@@ -362,6 +445,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
     runs = load_runs(runs_dir)
     families = load_families(families_dir)
     latest = runs[-1] if runs else None
+    compare_diffs = _build_compare_page(runs, lanes or {}, out_dir)
 
     # ---- overview ---------------------------------------------------------
     body = []
@@ -541,6 +625,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         "runs": len(runs),
         "families": len(families),
         "documents": doc_pages,
+        "compare_diffs": compare_diffs,
     }, indent=2))
 
     return {"runs": len(runs), "families": len(families), "documents": doc_pages, "out": str(out_dir)}
@@ -551,4 +636,13 @@ def build_from_repo(repo: Path, out: Path | None = None) -> dict:
     # Do not wipe the output: rendered page images are cached there and
     # re-rasterising the whole run on every rebuild is slow.
     out.mkdir(parents=True, exist_ok=True)
-    return build(repo / "private" / "runs", repo / "docs" / "families", out)
+    # three-lane.sh records which run each lane produced; without it the compare
+    # page is simply not built rather than guessed at.
+    lanes = {}
+    lanes_file = repo / "private" / "build" / "three-lane.json"
+    if lanes_file.exists():
+        try:
+            lanes = json.loads(lanes_file.read_text())
+        except (OSError, json.JSONDecodeError):
+            lanes = {}
+    return build(repo / "private" / "runs", repo / "docs" / "families", out, lanes=lanes)
