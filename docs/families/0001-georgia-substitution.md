@@ -5,6 +5,7 @@
 **Tier:** T1 (line breaks) with T2 (geometry) consequences
 **Fix class:** `config` — font availability, not a code defect
 **Affected:** 1 synthetic case so far; expected to affect any document using Georgia
+**Documents:** georgia
 **Pinned inputs:** `collabora/code@sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55`
 — Collabora Office 26.04.5.2, build `42745e44`; no oracle build (not yet available)
 

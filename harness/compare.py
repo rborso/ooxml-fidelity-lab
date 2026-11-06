@@ -72,6 +72,26 @@ def classify_fonts(missing: list[str], extra: list[str]) -> tuple[dict, dict]:
     return expected, unexpected
 
 
+def _char_counts(tree: dict) -> Counter:
+    """Character multiset of the whole document.
+
+    Order-insensitive on purpose: '250' may be emitted as '50' then '2', which
+    changes the concatenation but not the characters. If the character
+    multisets match, nothing was lost - only segmented or reordered.
+    """
+    return Counter(_space_free(tree))
+
+
+def _space_free(tree: dict) -> str:
+    """All tokens concatenated, no separators.
+
+    Engines segment text differently: 'Liabilities' can come out as
+    'Liabilitie' + 's', and '250' as '50' + '0', when a cell wraps or a span is
+    split. If the space-free text matches, nothing was lost.
+    """
+    return "".join("".join(page_tokens(page)) for page in tree["pages"])
+
+
 def _t0(reference: dict, candidate: dict) -> dict:
     """Three separate questions, three separate answers.
 
@@ -123,6 +143,7 @@ def _t0(reference: dict, candidate: dict) -> dict:
         "pass": not content,
         "missing_count": sum(doc_missing.values()),
         "extra_count": sum(doc_extra.values()),
+        "space_free_equal": _char_counts(reference) == _char_counts(candidate),
         "content_issues": content[:10],
         "flow_issues": flow[:10],
         "flow_differs": bool(flow),
@@ -188,6 +209,13 @@ def compare(reference: dict, candidate: dict, tolerances: dict | None = None) ->
         allow_missing = bool(tol.get("allow_missing"))
         allow_extra = bool(tol.get("allow_extra"))
         page_count_differs = any("page count" in i for i in t0["content_issues"])
+
+        # Same characters, different word boundaries: a spacing or span split,
+        # not content loss. Checked before the tolerance rules because it is a
+        # property of the rendering, not of the document.
+        if t0.get("space_free_equal") and not page_count_differs:
+            return {"t0": t0, "t1": None, "t2": None, "score": 0.7, "tier": "SEGMENT"}
+
         permitted = (
             (t0["missing_count"] == 0 or allow_missing)
             and (t0["extra_count"] == 0 or allow_extra)

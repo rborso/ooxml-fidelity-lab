@@ -42,6 +42,14 @@ run:
 run-oracle:
 	$(PYTHON) -m harness.cli run --oracle windows --out private/runs
 
+## Baseline against the clean upstream renderer
+run-clean:
+	$(PYTHON) -m harness.cli run --oracle windows --renderer clean --out private/runs
+
+## Same corpus against the patched renderer (requires PATCHED_IMAGE)
+run-patched:
+	$(PYTHON) -m harness.cli run --oracle windows --renderer patched --out private/runs
+
 ## Re-render the report for the most recent run
 report:
 	@latest=$$(ls -dt private/runs/run-* 2>/dev/null | head -1); \

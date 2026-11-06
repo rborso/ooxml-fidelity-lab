@@ -4,10 +4,31 @@
 **Family key:** `w:sdt` inside `w:txbxContent` × content absent
 **Tier:** T0 — data loss
 **Fix class:** `renderer`
-**Affected:** 1 document (`bz31914-40567`)
+**Affected:** 1 document (`bz31914-40567`), split into `bz31914-sdt-textbox`
+**Documents:** bz31914-sdt-textbox, bz31914-40567
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---
+
+## Minimal reproducer
+
+`bz31914-40567` was one document with two independent defects. Splitting its body by
+construct isolates this one: a single body-level `w:sdt` wrapping a `w:txbxContent`, which
+is 1 of the original 50 body children.
+
+```bash
+.venv/bin/python -m harness.cli extract \
+  --doc private/corpus/bugzilla/bug31914-ReferenceDocument.docx \
+  --out private/corpus/derived/bz31914-sdt-textbox.docx --contains txbxContent
+```
+
+That reproducer scores **T0** on its own (8 tokens absent, page count 1 vs 2), so the
+remaining tables and paragraphs were never needed to trigger it. Everything else about
+`bz31914-40567` belongs to family 0006.
+
+The same bug carries the confirmation experiment already: attachment 138994 is the same
+document re-saved by Word in 2018, and it scores **ORDER**, not T0 — the text survives.
+That is the shortest route to the exact markup difference.
 
 ## Observed
 

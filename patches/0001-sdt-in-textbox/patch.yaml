@@ -1,0 +1,31 @@
+id: "0001"
+title: "Import w:sdt nested inside w:txbxContent"
+family: "0004"
+upstream: "writerfilter"
+component: "filters and storage"
+
+base:
+  image: "docker.io/collabora/code"
+  digest: "sha256:808410e77b8695a35b93c7638fbba07c10cf0ba8307141b460248f18ab6e5c55"
+  version: "26.04.5.2"
+
+patched:
+  image: "ooxml-lab/collabora:0001-sdt-in-textbox"
+  digest: "REPLACE_AFTER_BUILD"
+
+reproducer: "bz31914-sdt-textbox"
+expected:
+  before: "T0 — 8 tokens absent, page count 1 vs 2"
+  after: "PASS or SEGMENT — all characters present"
+
+files:
+  - "writerfilter/source/ooxml/OOXMLFastContextHandler.cxx"
+  - "writerfilter/source/dmapper/SdtHelper.cxx"
+
+revert: "git apply -R fix.patch, rebuild, retag clean"
+
+notes: >
+  The shape text-body path accepts w:p and w:r but not w:sdt, so the control is
+  skipped and its runs never reach the domain mapper. Attachment 138994 on the
+  same bug is the same document re-saved by Word and does not lose the text,
+  which is the shortest route to the exact markup difference.

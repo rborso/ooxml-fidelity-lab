@@ -5,6 +5,7 @@
 **Tier:** T0 — data loss
 **Fix class:** `renderer`
 **Affected:** 4 documents (`bz33590-53915`, `bz45284-57967`, `bz45284-57968`, `bz47240-58329`)
+**Documents:** bz33590-53915, bz45284-57967, bz45284-57968, bz47240-58329
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---

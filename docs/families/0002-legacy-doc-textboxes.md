@@ -5,6 +5,7 @@
 **Tier:** T0 — data loss
 **Fix class:** `renderer`
 **Affected:** 1 document so far (`bz34722-43806`), plus the mirror case `bz36791-46282`
+**Documents:** bz34722-43806, bz36791-46282
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---

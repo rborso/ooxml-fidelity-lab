@@ -98,9 +98,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         else {}
     )
 
+    if args.renderer == "patched":
+        render_fn = render.render_patched
+        image_used = render.PATCHED_IMAGE or "unset (PATCHED_IMAGE)"
+    else:
+        render_fn = render.render_collabora
+        image_used = render.COLLABORA_IMAGE
+
     print(f"corpus:   {corpus_label}")
     print(f"oracle:   {args.oracle}")
-    print(f"renderer: {render.COLLABORA_IMAGE.split('@')[0]}")
+    print(f"renderer: {args.renderer} {image_used.split('@')[0]}")
     print(f"output:   {work}\n")
 
     refs: dict[str, Path] = {}
@@ -129,7 +136,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"{'ORACLE':9s} 0.00  {doc_id}  ({reason})")
             continue
 
-        cand_pdf = render.render_collabora(docx, work / "cand" / doc_id)
+        cand_pdf = render_fn(docx, work / "cand" / doc_id)
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
@@ -156,7 +163,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             if args.oracle == "stub"
             else f"windows:{args.domain}"
         ),
-        "renderer": render.COLLABORA_IMAGE,
+        "renderer": image_used,
         "tolerances": tol,
         "summary": summary,
         "documents": results,
@@ -244,6 +251,19 @@ def cmd_drift(args: argparse.Namespace) -> int:
         )
     ref = reference_drift(a_dir, b_dir, a, b)
     print(f"reference drift: documents={ref['documents']} mean={ref['mean']}")
+    return 0
+
+
+def cmd_extract(args: argparse.Namespace) -> int:
+    from .split import extract
+
+    info = extract(
+        Path(args.doc).resolve(),
+        Path(args.out).resolve(),
+        args.contains,
+        mode=args.mode,
+    )
+    print(json.dumps(info, indent=2))
     return 0
 
 
@@ -395,6 +415,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
+    r.add_argument("--renderer", default="clean", choices=["clean", "patched"])
     r.add_argument("--domain", default="win11-0")
     r.add_argument("--boot-timeout", type=int, default=900)
     r.set_defaults(func=cmd_run)
@@ -432,6 +453,13 @@ def build_parser() -> argparse.ArgumentParser:
     fz.add_argument("--manifest", default="private/corpus/manifest.yaml")
     fz.add_argument("--out", default="private/corpus/holdout.sha256")
     fz.set_defaults(func=cmd_freeze)
+
+    ex = sub.add_parser("extract", help="keep only body children containing given strings")
+    ex.add_argument("--doc", required=True)
+    ex.add_argument("--out", required=True)
+    ex.add_argument("--contains", action="append", required=True)
+    ex.add_argument("--mode", choices=["all", "any"], default="all")
+    ex.set_defaults(func=cmd_extract)
 
     rt = sub.add_parser("roundtrip", help="convergence and format churn for one document")
     rt.add_argument("--doc", required=True)

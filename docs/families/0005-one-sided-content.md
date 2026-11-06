@@ -5,6 +5,7 @@
 **Tier:** T0 (by count only), but not data loss
 **Fix class:** `adjudicate`
 **Affected:** 1 document (`bz32363-205622`)
+**Documents:** bz32363-205622
 **Pinned inputs:** Word `16.0.19127.20860` · `collabora/code@sha256:808410e7…` (26.04.5.2)
 
 ---

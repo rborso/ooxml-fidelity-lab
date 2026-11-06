@@ -172,6 +172,18 @@ def test_page_count_mismatch_is_never_tolerated():
     assert res["tier"] == "T0"
 
 
+def test_word_segmentation_is_not_content_loss():
+    """'250' vs '50' + '2' is a span split, not a missing value."""
+    res = compare.compare(make(["250", "Accounts"]), make(["50", "2", "Account", "s"]))
+    assert res["tier"] == "SEGMENT"
+    assert res["t0"]["space_free_equal"] is True
+
+
+def test_genuinely_missing_text_is_still_t0():
+    res = compare.compare(make(["250"]), make(["50"]))
+    assert res["tier"] == "T0"
+
+
 def test_line_count_change_fails_t1():
     res = compare.compare(make(["alpha"], line_count=2), make(["alpha"], line_count=3))
     assert res["tier"] == "T1"

@@ -29,6 +29,7 @@ TIER_CLASS = {
     "ORDER": "warn",
     "FLOW": "warn",
     "FIELD": "warn",
+    "SEGMENT": "warn",
     "T1": "bad",
     "T0": "fatal",
     "ORACLE-FAIL": "fatal",
@@ -133,6 +134,13 @@ def load_runs(runs_dir: Path) -> list[dict]:
     return runs
 
 
+def _family_docs(md: str) -> list[str]:
+    match = re.search(r"\*\*Documents:\*\*\s*(.+)", md)
+    if not match:
+        return []
+    return [part.strip() for part in match.group(1).split(",") if part.strip()]
+
+
 def _family_status(md: str) -> str:
     match = re.search(r"\*\*Status:\*\*\s*([a-z-]+)", md)
     return match.group(1) if match else "unknown"
@@ -157,6 +165,7 @@ def load_families(families_dir: Path) -> list[dict]:
                 "path": path,
                 "title": _family_title(text, path.stem),
                 "status": _family_status(text),
+                "docs": _family_docs(text),
                 "text": text,
             }
         )
@@ -202,7 +211,7 @@ def _page_images(pdf: Path, media_dir: Path, prefix: str, zoom: float = 1.2, max
     return images
 
 
-def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path) -> int:
+def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: list[dict]) -> int:
     run_dir = runs_dir / run["_dir"]
     run_out = out_dir / "documents" / run["_dir"]
     media_root = out_dir / "media" / run["_dir"]
@@ -247,6 +256,13 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path) -> int:
         ]
         if error:
             body.append(f'<div class="note">{_esc(error)}</div>')
+        related = [fam for fam in families if doc_id in fam["docs"]]
+        if related:
+            links = ", ".join(
+                f'<a href="../../families/{_esc(fam["slug"])}.html">{_esc(fam["title"])}</a>'
+                for fam in related
+            )
+            body.append(f'<div class="note">Known families: {links}</div>')
         if not rows:
             body.append('<p class="mut">No rendered pages available for this document.</p>')
         body.extend(rows)
@@ -323,7 +339,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
 
     (out_dir / "index.html").write_text(_page("Overview", "index", "\n".join(body)))
 
-    doc_pages = _build_document_pages(runs_dir, latest, out_dir) if latest else 0
+    doc_pages = _build_document_pages(runs_dir, latest, out_dir, families) if latest else 0
 
     # ---- runs -------------------------------------------------------------
     body = ["<h2>All runs</h2><table><tr><th>Started</th><th>Oracle</th><th>Docs</th>"
@@ -403,12 +419,26 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
 
     # ---- families ---------------------------------------------------------
     body = ["<h2>Failure families</h2>"]
+    latest_ids = {d["id"] for d in (latest or {}).get("documents", [])}
+    latest_dir = (latest or {}).get("_dir", "")
     if families:
         for fam in families:
+            doc_links = []
+            for doc_id in fam["docs"]:
+                if doc_id in latest_ids:
+                    doc_links.append(
+                        f'<a class="mono" href="documents/{latest_dir}/{_esc(doc_id)}.html">'
+                        f"{_esc(doc_id)}</a>"
+                    )
+                else:
+                    doc_links.append(f'<span class="mono mut">{_esc(doc_id)}</span>')
+            meta = f'status <strong>{_esc(fam["status"])}</strong>'
+            if doc_links:
+                meta += " &middot; documents: " + ", ".join(doc_links)
             body.append(
                 f'<div class="fam"><h3><a href="families/{_esc(fam["slug"])}.html">'
                 f'{_esc(fam["title"])}</a></h3>'
-                f'<div class="meta">status <strong>{_esc(fam["status"])}</strong></div></div>'
+                f'<div class="meta">{meta}</div></div>'
             )
             page = _page(fam["title"], "families",
                          f'<div class="doc">{_render_md(fam["text"])}</div>')

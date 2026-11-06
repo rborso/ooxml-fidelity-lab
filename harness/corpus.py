@@ -44,7 +44,15 @@ def load(manifest: Path) -> tuple[int, list[Item]]:
     items: list[Item] = []
     seen: set[str] = set()
 
-    for raw in data.get("items") or []:
+    raw_items = list(data.get("items") or [])
+    # Derived items live beside the manifest in their own file so that
+    # regenerating the fetched manifest does not lose them.
+    derived = manifest.parent / "derived.yaml"
+    if derived.exists():
+        extra = (yaml.safe_load(derived.read_text()) or {}).get("items") or []
+        raw_items.extend(extra)
+
+    for raw in raw_items:
         missing = [k for k in REQUIRED if not raw.get(k)]
         if missing:
             raise ValueError(f"item {raw.get('id', '?')} missing {missing}")
