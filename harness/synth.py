@@ -233,9 +233,13 @@ def build(construct: str) -> str:
     )
 
 
-def write(construct: str, path: Path) -> Path:
+def write_body(body: str, path: Path) -> Path:
+    """Write a document from raw body XML. Shared by the construct sets."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    document = build(construct)
+    document = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        f"<w:document {NS}><w:body>{body}{SECT}</w:body></w:document>"
+    )
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("[Content_Types].xml", CONTENT_TYPES)
         z.writestr("_rels/.rels", PACKAGE_RELS)
@@ -244,6 +248,10 @@ def write(construct: str, path: Path) -> Path:
         z.writestr("word/styles.xml", STYLES)
         z.writestr("word/numbering.xml", NUMBERING)
     return path
+
+
+def write(construct: str, path: Path) -> Path:
+    return write_body("".join(CONSTRUCTS[construct]), path)
 
 
 def write_all(out_dir: Path) -> list[Path]:
