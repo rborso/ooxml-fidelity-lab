@@ -47,6 +47,21 @@ def extract(src: Path, dst: Path, needles: list[str], mode: str = "all") -> dict
             body.remove(child)
             removed += 1
 
+    # Word merges two adjacent tables into one, so removing the paragraphs that
+    # separated them silently changes the document. A single empty paragraph
+    # between tables keeps them apart, which is what a user does by hand.
+    previous = None
+    for child in list(body):
+        if child.tag.endswith("}sectPr"):
+            continue
+        if (
+            previous is not None
+            and previous.tag == f"{{{W}}}tbl"
+            and child.tag == f"{{{W}}}tbl"
+        ):
+            body.insert(body.index(child), etree.Element(f"{{{W}}}p"))
+        previous = child
+
     entries[DOCUMENT] = etree.tostring(
         tree, xml_declaration=True, encoding="UTF-8", standalone=True
     )

@@ -22,9 +22,10 @@ is 1 of the original 50 body children.
   --out private/corpus/derived/bz31914-sdt-textbox.docx --contains txbxContent
 ```
 
-That reproducer scores **T0** on its own (8 tokens absent, page count 1 vs 2), so the
-remaining tables and paragraphs were never needed to trigger it. Everything else about
-`bz31914-40567` belongs to family 0006.
+That reproducer scores **T0** on its own: Word renders **8 words on 2 pages**, Collabora
+renders **0 words on 1 page**. The entire text box disappears, so the remaining tables and
+paragraphs were never needed to trigger it. Everything else about `bz31914-40567` belongs
+to family 0006.
 
 The same bug carries the confirmation experiment already: attachment 138994 is the same
 document re-saved by Word in 2018, and it scores **ORDER**, not T0 — the text survives.
