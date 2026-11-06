@@ -67,6 +67,13 @@ def cmd_gate(args: argparse.Namespace) -> int:
 
 def cmd_run(args: argparse.Namespace) -> int:
     started = _stamp()
+    try:
+        reaped = render.reap_stale()
+        if reaped:
+            print(f"removed {reaped} stale render container(s) from an earlier timeout",
+                  file=sys.stderr)
+    except render.RenderError:
+        pass
     work = Path(args.out).resolve() / f"run-{started}"
     work.mkdir(parents=True, exist_ok=True)
     tol = _load_tolerances(Path(args.tolerances) if args.tolerances else None)

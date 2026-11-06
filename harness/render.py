@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import os
 import shutil
+import signal
 import subprocess
+import uuid
 from pathlib import Path
 
 # Pinned. A floating tag destroys comparability between runs.
@@ -32,6 +34,26 @@ def _podman() -> str:
     raise RenderError("neither podman nor docker found")
 
 
+LABEL = "ooxml-lab=render"
+
+
+def reap_stale() -> int:
+    """Remove containers left behind by a render that timed out.
+
+    `podman run --rm` removes the container when it exits, not when the client is
+    killed. A timeout therefore leaves soffice.bin spinning at 100% forever: the
+    first one found here had been running for 3h20m on a single document.
+    """
+    exe = _podman()
+    ids = subprocess.run(
+        [exe, "ps", "-aq", "--filter", f"label={LABEL}"],
+        capture_output=True, text=True,
+    ).stdout.split()
+    for cid in ids:
+        subprocess.run([exe, "rm", "-f", cid], capture_output=True)
+    return len(ids)
+
+
 def render_collabora(
     docx: Path, out_dir: Path, image: str = COLLABORA_IMAGE, timeout: int = 180
 ) -> Path:
@@ -41,8 +63,14 @@ def render_collabora(
     out_dir.mkdir(parents=True, exist_ok=True)
     pdf = out_dir / (docx.stem + ".pdf")
 
+    exe = _podman()
+    # A name we own, so a timeout can kill the container rather than just the
+    # client that is waiting on it.
+    name = f"ooxml-render-{uuid.uuid4().hex[:12]}"
     cmd = [
-        _podman(), "run", "--rm",
+        exe, "run", "--rm",
+        "--name", name,
+        "--label", LABEL,
         "--user", "0",
         "-e", "HOME=/tmp",
         "-v", f"{docx.parent}:/in:Z",
@@ -57,9 +85,11 @@ def render_collabora(
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        subprocess.run([exe, "rm", "-f", name], capture_output=True)
         raise RenderError(f"render timed out after {timeout}s: {docx.name}") from exc
 
     if not pdf.exists():
+        subprocess.run([exe, "rm", "-f", name], capture_output=True)
         raise RenderError(
             f"no PDF produced for {docx.name} (exit {proc.returncode})\n"
             f"{(proc.stderr or proc.stdout)[-800:]}"
@@ -116,8 +146,19 @@ def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -
         str(docx),
     ]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        # Own session: soffice spawns children, and killing only the parent
+        # leaves them holding the document open.
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            start_new_session=True, env=env,
+        )
+        stdout, stderr = proc.communicate(timeout=timeout)
     except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.communicate()
         raise RenderError(f"render timed out after {timeout}s: {docx.name}") from exc
     finally:
         shutil.rmtree(profile, ignore_errors=True)
@@ -125,7 +166,7 @@ def render_soffice(binary: str, docx: Path, out_dir: Path, timeout: int = 180) -
     if not pdf.exists():
         raise RenderError(
             f"no PDF produced for {docx.name} (exit {proc.returncode})\n"
-            f"{(proc.stderr or proc.stdout)[-800:]}"
+            f"{(stderr or stdout or '')[-800:]}"
         )
     return pdf
 

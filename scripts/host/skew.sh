@@ -21,6 +21,9 @@ CONF=$REPO/private/fonts/fonts.conf
 
 say() { printf '\n== %s\n' "$*"; }
 
+# Unbuffered, or a piped run shows nothing until it exits.
+export PYTHONUNBUFFERED=1
+
 say "fonts: mirror the container bundle"
 mkdir -p "$FONTS"
 if [ ! -f "$FONTS/.extracted" ]; then
@@ -58,14 +61,14 @@ if [ -n "${REUSE_FROM:-}" ]; then
 fi
 "$PY" -m harness.cli run $REF_ARGS --renderer image \
   --corpus "$CORPUS" --out private/runs 2>&1 | tee private/build/skew-run1.log | tail -3
-REF="private/runs/$(sed -n 's/^run: //p' private/build/skew-run1.log | tail -1)"
+REF=$(ls -dt private/runs/run-* | head -1)
 
 say "run 2/2: built-clean, same fonts, same references"
 CLEAN_SOFFICE=${CLEAN_SOFFICE:-$REPO/build/instdir-clean/program/soffice} \
 LO_FONTCONFIG=$CONF \
 "$PY" -m harness.cli run --reuse-ref "$REF" --renderer built-clean \
   --corpus "$CORPUS" --out private/runs 2>&1 | tee private/build/skew-run2.log | tail -3
-NEW="private/runs/$(sed -n 's/^run: //p' private/build/skew-run2.log | tail -1)"
+NEW=$(ls -dt private/runs/run-* | head -1)
 
 say "skew"
 "$PY" -m harness.cli validate --clean-run "$REF" --custom-run "$NEW" || true
