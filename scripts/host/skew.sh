@@ -51,18 +51,21 @@ cat > "$CONF" <<EOF
 EOF
 
 say "run 1/2: pinned image (deployment reference)"
-ref_out=$("$PY" -m harness.cli run --oracle windows --renderer image \
-  --corpus "$CORPUS" --out private/runs)
-echo "$ref_out" | tail -3
-REF="private/runs/$(echo "$ref_out" | sed -n 's/^run: //p' | tail -1)"
+REF_ARGS="--oracle windows"
+if [ -n "${REUSE_FROM:-}" ]; then
+  REF_ARGS="--reuse-ref $REUSE_FROM"
+  echo "reusing Word output from $REUSE_FROM"
+fi
+"$PY" -m harness.cli run $REF_ARGS --renderer image \
+  --corpus "$CORPUS" --out private/runs 2>&1 | tee private/build/skew-run1.log | tail -3
+REF="private/runs/$(sed -n 's/^run: //p' private/build/skew-run1.log | tail -1)"
 
-say "run 2/2: built-clean, same fonts"
-new_out=$(CLEAN_SOFFICE=${CLEAN_SOFFICE:-$REPO/build/instdir-clean/program/soffice} \
+say "run 2/2: built-clean, same fonts, same references"
+CLEAN_SOFFICE=${CLEAN_SOFFICE:-$REPO/build/instdir-clean/program/soffice} \
 LO_FONTCONFIG=$CONF \
-"$PY" -m harness.cli run --oracle windows --renderer built-clean \
-  --corpus "$CORPUS" --out private/runs)
-echo "$new_out" | tail -3
-NEW="private/runs/$(echo "$new_out" | sed -n 's/^run: //p' | tail -1)"
+"$PY" -m harness.cli run --reuse-ref "$REF" --renderer built-clean \
+  --corpus "$CORPUS" --out private/runs 2>&1 | tee private/build/skew-run2.log | tail -3
+NEW="private/runs/$(sed -n 's/^run: //p' private/build/skew-run2.log | tail -1)"
 
 say "skew"
 "$PY" -m harness.cli validate --clean-run "$REF" --custom-run "$NEW" || true

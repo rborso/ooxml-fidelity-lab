@@ -100,16 +100,43 @@ detach
 # offline so there is no signal between "booted" and "powered off"; the deadline
 # has to assume the worst case for every job or a large corpus reads as a hang.
 PER_DOC=${ORACLE_PER_DOC:-30}
+# The guest writes a PDF and a marker per finished job. If the block device
+# stops accumulating written bytes while the domain is still running, nothing is
+# completing - so that, not the deadline, is the real stall signal. Both are
+# host-side: the guest stays offline and nothing in the image changes.
+STALL_SECS=${ORACLE_STALL_SECS:-300}
 limit=$(( BOOT_TIMEOUT + PER_DOC * n_jobs ))
-log "booting $DOMAIN ($n_jobs jobs, ${limit}s limit)"
+log "booting $DOMAIN ($n_jobs jobs, ${limit}s limit, ${STALL_SECS}s stall limit)"
 sudo -n virsh start "$DOMAIN" >/dev/null || die "start failed"
 deadline=$(( $(date +%s) + limit ))
+last_wr=-1; last_cpu=-1; last_change=$(date +%s); last_note=0; have_block=0
 while :; do
+  now=$(date +%s)
   if [ "$(domstate)" = "shut off" ]; then
     log "oracle finished and powered off"
     break
   fi
-  [ "$(date +%s)" -ge "$deadline" ] && die "timed out after ${limit}s for $n_jobs job(s)"
+  [ "$now" -ge "$deadline" ] && die "timed out after ${limit}s for $n_jobs job(s)"
+
+  stats=$(sudo -n virsh domstats "$DOMAIN" --block --vcpu 2>/dev/null || true)
+  if printf '%s\n' "$stats" | grep -q 'wr\.bytes='; then have_block=1; fi
+  wr=$(printf '%s\n' "$stats" | awk -F= '/\.wr\.bytes=/ {s+=$2} END {printf "%d", s}')
+  cpu=$(printf '%s\n' "$stats" | awk -F= '/vcpu\.[0-9]+\.time=/ {s+=$2} END {printf "%d", s}')
+  # Block writes are the honest signal: a PDF per document. Fall back to vCPU
+  # time only if this libvirt does not expose block stats at all.
+  if [ "$have_block" = 1 ]; then signal=$wr; else signal=$cpu; fi
+  if [ "$signal" != "${last_signal:-}" ]; then
+    last_signal=$signal; last_change=$now
+  fi
+  idle=$(( now - last_change ))
+
+  if [ $(( now - last_note )) -ge 300 ]; then
+    log "progress: ${wr} bytes written, ${cpu}s cpu, ${idle}s since last write"
+    last_note=$now
+  fi
+  if [ "$idle" -ge "$STALL_SECS" ]; then
+    die "stalled: no guest activity for ${idle}s (${wr} bytes written, ${cpu}s cpu, domain still running)"
+  fi
   sleep 3
 done
 

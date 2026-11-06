@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from collections import Counter
 from datetime import datetime, timezone
@@ -120,7 +121,25 @@ def cmd_run(args: argparse.Namespace) -> int:
     print(f"output:   {work}\n")
 
     refs: dict[str, Path] = {}
-    if args.oracle == "windows":
+    if args.reuse_ref:
+        # Reuse Word's output from an earlier run. For a two-renderer comparison
+        # this is not only faster: it guarantees both passes are measured against
+        # the exact same reference rather than two separate oracle runs.
+        src = Path(args.reuse_ref) / "ref"
+        missing = []
+        for doc_id in ids:
+            pdf = src / doc_id / "document.pdf"
+            if not pdf.exists():
+                missing.append(doc_id)
+                continue
+            dst = work / "ref" / doc_id
+            dst.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(pdf, dst / "document.pdf")
+            refs[doc_id] = dst / "document.pdf"
+        print(f"oracle:   reused {len(refs)} reference PDF(s) from {src}"
+              + (f", {len(missing)} missing" if missing else ""))
+        oracle_results = {}
+    elif args.oracle == "windows":
         from .oracle import OracleError, WindowsOracle
 
         vo = WindowsOracle(domain=args.domain, timeout=args.boot_timeout)
@@ -145,7 +164,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"{'ORACLE':9s} 0.00  {doc_id}  ({reason})")
             continue
 
-        cand_pdf = render_fn(docx, work / "cand" / doc_id)
+        try:
+            cand_pdf = render_fn(docx, work / "cand" / doc_id)
+        except render.RenderError as exc:
+            # One document that will not render must not destroy a two-hour run,
+            # and a silent skip would be worse: it would look like a pass.
+            results.append({"id": doc_id, "tier": "RENDER-FAIL", "score": 0.0,
+                            "cls": classes.get(doc_id, "unclassified"),
+                            "t0": None, "t1": None, "t2": None, "error": str(exc)})
+            print(f"{'RENDER':11s} 0.00  {doc_id}  ({exc})")
+            continue
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
@@ -507,6 +535,8 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--split", default="all", choices=["all", "dev", "holdout"])
     r.add_argument("--tolerances", default="config/tolerances.yaml")
     r.add_argument("--oracle", default="stub", choices=["stub", "windows"])
+    r.add_argument("--reuse-ref", default=None,
+                   help="reuse reference PDFs from an earlier run instead of booting the oracle")
     r.add_argument("--renderer", default="image",
                    choices=["image", "built-clean", "built-patched"])
     r.add_argument("--domain", default="win11-0")
