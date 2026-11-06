@@ -14,7 +14,8 @@ PIP    ?= .venv/bin/pip
 
 .DEFAULT_GOAL := help
 
-.PHONY: help venv check gate run report test clean
+.PHONY: help venv check gate run run-oracle run-clean run-custom \
+        prepare-build build batch report site serve test clean
 
 help:
 	@grep -E '^## ' Makefile | sed 's/^## //'
