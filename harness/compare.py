@@ -114,6 +114,15 @@ def _t0(reference: dict, candidate: dict) -> dict:
         )
     doc_missing = ref_doc - cand_doc
     doc_extra = cand_doc - ref_doc
+    missing_detail: list[dict] = []
+    if doc_missing:
+        # Which page lost what. "missing 43 tokens" is a diagnosis nobody can
+        # act on; "page 3 lost 'Összesen', 'Áfa', ..." points at a table.
+        for rp in reference["pages"]:
+            lost = [t for t in page_tokens(rp) if t in doc_missing]
+            if lost:
+                missing_detail.append({"page": rp["number"], "count": len(lost),
+                                       "tokens": lost[:8]})
     if doc_missing or doc_extra:
         bits = []
         if doc_missing:
@@ -143,6 +152,7 @@ def _t0(reference: dict, candidate: dict) -> dict:
         "pass": not content,
         "missing_count": sum(doc_missing.values()),
         "extra_count": sum(doc_extra.values()),
+        "missing_detail": missing_detail[:10],
         "space_free_equal": _char_counts(reference) == _char_counts(candidate),
         "content_issues": content[:10],
         "flow_issues": flow[:10],

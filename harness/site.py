@@ -22,6 +22,8 @@ try:  # optional, falls back to <pre>
 except ImportError:  # pragma: no cover
     _md = None
 
+from . import pixels
+
 TIER_CLASS = {
     "PASS": "ok",
     "T2-fonts": "warn",
@@ -104,6 +106,20 @@ def _esc(value) -> str:
 
 def _badge(tier: str) -> str:
     return f'<span class="badge {TIER_CLASS.get(tier, "warn")}">{_esc(tier)}</span>'
+
+
+SEV_CLASS = {
+    "identical": "ok",
+    "subpixel": "ok",
+    "minor": "warn",
+    "visible": "warn",
+    "major": "bad",
+    "unknown": "fatal",
+}
+
+
+def _sev_badge(sev: str) -> str:
+    return f'<span class="badge {SEV_CLASS.get(sev, "warn")}">{_esc(sev or "n/a")}</span>'
 
 
 def _page(title: str, active: str, body: str, prefix: str = "") -> str:
@@ -262,6 +278,41 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
         ]
         if error:
             body.append(f'<div class="note">{_esc(error)}</div>')
+        visual = doc.get("visual") or {}
+        if visual:
+            body.append(
+                f'<p>Visual: {_sev_badge(visual.get("severity", ""))}'
+                f' &middot; worst page {float(visual.get("worst", 0)) * 100:.2f}% pixels changed'
+                f' &middot; {visual.get("pages_ref", "?")} vs {visual.get("pages_cand", "?")} pages</p>'
+            )
+        t0 = doc.get("t0") or {}
+        for entry in (t0.get("missing_detail") or [])[:3]:
+            body.append(
+                f'<div class="note">page {entry["page"]} lost {entry["count"]} token(s): '
+                f'<span class="mono">{_esc(", ".join(entry["tokens"]))}</span></div>'
+            )
+        if (visual and visual.get("severity") not in (None, "identical")
+                and ref_pdf and cand_pdf):
+            heat = []
+            for page in sorted(visual.get("pages", []),
+                               key=lambda p: -p.get("fraction", 0))[:3]:
+                if page.get("fraction", 0) <= 0:
+                    continue
+                img = media_root / doc_id / f"diff-{page['page']}.png"
+                if not img.exists():
+                    pixels.write_heatmap(ref_pdf, cand_pdf, int(page["page"]), img)
+                if img.exists():
+                    heat.append(
+                        f'<figure><figcaption>page {page["page"]} &middot; '
+                        f'{page["fraction"] * 100:.2f}% changed</figcaption>'
+                        f'<img src="../../media/{_esc(run["_dir"])}/{_esc(doc_id)}/{img.name}"'
+                        f' loading="lazy"></figure>'
+                    )
+            if heat:
+                body.append('<h2>Pixel differences</h2><p class="mut">Red marks pixels that '
+                            'differ from Word; grey is Word for reference. This is the only '
+                            'view that can show a border, a fill or an image.</p>'
+                            '<div class="cols">' + "".join(heat) + "</div>")
         related = [fam for fam in families if doc_id in fam["docs"]]
         if related:
             links = ", ".join(
@@ -432,7 +483,9 @@ def _build_compare_page(runs: list[dict], lanes: dict, out_dir: Path,
                 cells.append('<td class="mut">&mdash;</td>')
                 continue
             link = f"documents/{_esc(lanes[name])}/{_esc(doc_id)}.html"
-            cells.append(f'<td><a href="{link}">{_badge(doc["tier"])}</a></td>')
+            vis = (doc.get("visual") or {}).get("severity")
+            cells.append(f'<td><a href="{link}">{_badge(doc["tier"])}</a>'
+                         + (f' {_sev_badge(vis)}' if vis else "") + "</td>")
         head = "".join(f"<th>{_esc(LANE_LABELS.get(n, n))}</th>" for n in names)
         strip = []
         ref_pdf, _ = _find_pdfs(runs_dir / lanes[names[0]], doc_id)
@@ -509,17 +562,23 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
         body.append("</div>")
 
         body.append("<h2>Documents in this run</h2><table><tr><th>Document</th><th>Tier</th>"
-                    "<th>Score</th><th>Median&nbsp;pt</th><th>p95&nbsp;pt</th>"
+                    "<th>Visual</th><th>Score</th><th>Median&nbsp;pt</th><th>p95&nbsp;pt</th>"
                     "<th>Fonts</th><th>Pages</th></tr>")
         for doc in latest["documents"]:
             t2 = doc.get("t2") or {}
             fonts = t2.get("fonts_missing") or []
             detail = doc.get("error") or ""
             link = f"documents/{_esc(latest['_dir'])}/{_esc(doc['id'])}.html"
+            vis = (doc.get("visual") or {}).get("severity", "")
+            worst = (doc.get("visual") or {}).get("worst")
+            vis_cell = (_sev_badge(vis) + (f' <span class="mut num">{worst * 100:.2f}%</span>'
+                                           if isinstance(worst, (int, float)) else "")
+                        if vis else '<span class="mut">&mdash;</span>')
             body.append(
                 "<tr>"
                 f'<td class="mono"><a href="{link}">{_esc(doc["id"])}</a></td>'
                 f"<td>{_badge(doc['tier'])}</td>"
+                f"<td>{vis_cell}</td>"
                 f'<td class="num">{doc["score"]:.2f}</td>'
                 f'<td class="num">{t2.get("median_pt", "&mdash;")}</td>'
                 f'<td class="num">{t2.get("p95_pt", "&mdash;")}</td>'

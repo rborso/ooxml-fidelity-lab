@@ -16,7 +16,7 @@ from pathlib import Path
 
 from . import compare as cmp
 from . import corpus as corpus_mod
-from . import extract, render, synth
+from . import extract, pixels, render, synth
 
 DEFAULT_TOLERANCES = {"t2": {"median_pt_max": 1.0, "p95_pt_max": 4.0}}
 
@@ -184,9 +184,16 @@ def cmd_run(args: argparse.Namespace) -> int:
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
+        # A second, independent axis: text can be perfect while a border, a fill
+        # or an image differs. Those are the differences users report and the
+        # text tiers cannot see them.
+        if not args.no_pixels:
+            res["visual"] = pixels.compare(refs[doc_id], cand_pdf)
         results.append({"id": doc_id, "tier": res["tier"], "score": res["score"],
                         "cls": classes.get(doc_id, "unclassified"), **res})
-        print(f"{res['tier']:9s} {res['score']:.2f}  {doc_id}")
+        visual = (res.get("visual") or {}).get("severity", "")
+        print(f"{res['tier']:9s} {res['score']:.2f}  {doc_id}"
+              + (f"  visual={visual}" if visual and visual != "identical" else ""))
 
     from .scoring import aggregate, weights_from_config
 
@@ -546,6 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="reuse reference PDFs from an earlier run instead of booting the oracle")
     r.add_argument("--renderer", default="image",
                    choices=["image", "built-clean", "built-patched"])
+    r.add_argument("--no-pixels", action="store_true", help="skip the visual tier")
     r.add_argument("--domain", default="win11-0")
     r.add_argument("--boot-timeout", type=int, default=900)
     r.set_defaults(func=cmd_run)
