@@ -70,7 +70,11 @@ def maybe_rebuild(force: bool = False) -> None:
 
 class Handler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
-        if self.path in ("/", "/index.html", "/runs.html", "/baseline.html", "/families.html"):
+        if (
+            self.path in ("/", "/index.html", "/runs.html", "/baseline.html", "/families.html")
+            or self.path.startswith("/runs/")
+            or self.path.startswith("/documents/")
+        ):
             maybe_rebuild()
         super().do_GET()
 

@@ -248,7 +248,8 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
         t2 = doc.get("t2") or {}
         error = doc.get("error") or ""
         body = [
-            '<p><a href="../../index.html">&larr; all documents</a></p>',
+            f'<p><a href="../../index.html">&larr; overview</a> &middot; '
+            f'<a href="../../runs/{_esc(run["_dir"])}.html">run {_esc(run["started"])}</a></p>',
             f'<h2 style="margin-top:0">{_esc(doc_id)}</h2>',
             f'<p>{_badge(doc["tier"])} &nbsp; score {doc["score"]:.2f}'
             f' &middot; median {t2.get("median_pt", "&mdash;")} pt'
@@ -271,6 +272,78 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
         (run_out / f"{doc_id}.html").write_text(
             _page(doc_id, "index", "\n".join(body), prefix="../../")
         )
+        built += 1
+    return built
+
+
+def _build_run_pages(runs_dir: Path, runs: list[dict], out_dir: Path) -> int:
+    """One page per run, with its artifacts copied alongside."""
+    import shutil as _shutil
+
+    base = out_dir / "runs"
+    base.mkdir(parents=True, exist_ok=True)
+    built = 0
+
+    for run in runs:
+        run_id = run["_dir"]
+        target = base / run_id
+        target.mkdir(parents=True, exist_ok=True)
+        for name in ("results.json", "report.md", "clusters.json"):
+            source = runs_dir / run_id / name
+            if source.exists():
+                _shutil.copy2(source, target / name)
+
+        summary = run.get("summary", {})
+        body = [
+            f'<p><a href="../index.html">&larr; overview</a></p>',
+            f'<h2 style="margin-top:0">Run {_esc(run.get("started", run_id))}</h2>',
+            f'<p class="mut">oracle <span class="mono">{_esc(run.get("oracle", "?"))}</span>'
+            f' &middot; renderer <span class="mono">{_esc(str(run.get("renderer", "?")).split("@")[0])}</span></p>',
+        ]
+        if run.get("renderer", "").startswith("sha256"):
+            body.append(f'<p class="mono mut">{_esc(run["renderer"])}</p>')
+
+        body.append('<div class="cards">')
+        for number, label in [
+            (summary.get("count", 0), "documents"),
+            (f'{summary.get("mean_score", 0):.3f}', "mean"),
+            (f'{summary.get("weighted_mean", summary.get("mean_score", 0)):.3f}', "weighted"),
+            (len(run.get("documents", [])), "rows"),
+        ]:
+            body.append(
+                f'<div class="card"><div class="n">{_esc(number)}</div>'
+                f'<div class="l">{_esc(label)}</div></div>'
+            )
+        body.append("</div>")
+
+        body.append(
+            '<p class="mut" style="margin-top:14px">artifacts: '
+            f'<a href="results.json">results.json</a>'
+            + (' &middot; <a href="report.md">report.md</a>'
+               if (target / "report.md").exists() else "")
+            + (' &middot; <a href="clusters.json">clusters.json</a>'
+               if (target / "clusters.json").exists() else "")
+            + "</p>"
+        )
+
+        body.append(
+            "<h2>Documents</h2><table><tr><th>Document</th><th>Class</th><th>Tier</th>"
+            "<th>Score</th><th>Median pt</th><th>Pages</th></tr>"
+        )
+        for doc in run.get("documents", []):
+            t2 = doc.get("t2") or {}
+            link = f"../../documents/{_esc(run_id)}/{_esc(doc['id'])}.html"
+            body.append(
+                f'<tr><td class="mono"><a href="{link}">{_esc(doc["id"])}</a></td>'
+                f'<td class="mono mut">{_esc(doc.get("cls", "-"))}</td>'
+                f"<td>{_badge(doc.get('tier', '?'))}</td>"
+                f'<td class="num">{doc.get("score", 0):.2f}</td>'
+                f'<td class="num">{t2.get("median_pt", "&mdash;")}</td>'
+                f'<td><a href="{link}">view</a></td></tr>'
+            )
+        body.append("</table>")
+
+        (base / f"{run_id}.html").write_text(_page(f"Run {run_id}", "runs", "\n".join(body), prefix="../"))
         built += 1
     return built
 
@@ -339,7 +412,10 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
 
     (out_dir / "index.html").write_text(_page("Overview", "index", "\n".join(body)))
 
-    doc_pages = _build_document_pages(runs_dir, latest, out_dir, families) if latest else 0
+    doc_pages = 0
+    for run in runs:
+        doc_pages += _build_document_pages(runs_dir, run, out_dir, families)
+    run_pages = _build_run_pages(runs_dir, runs, out_dir)
 
     # ---- runs -------------------------------------------------------------
     body = ["<h2>All runs</h2><table><tr><th>Started</th><th>Oracle</th><th>Docs</th>"
@@ -355,7 +431,8 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
         previous = mean
         tiers = ", ".join(f"{k}:{v}" for k, v in sorted(run["summary"].get("by_tier", {}).items()))
         body.append(
-            f'<tr><td class="mono">{_esc(run["started"])}</td>'
+            f'<tr><td class="mono"><a href="runs/{_esc(run["_dir"])}.html">'
+            f'{_esc(run["started"])}</a></td>'
             f'<td class="mono">{_esc(run["oracle"])}</td>'
             f'<td class="num">{run["summary"].get("count", 0)}</td>'
             f'<td class="num">{mean:.2f}</td>'
@@ -419,15 +496,19 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path) -> dict:
 
     # ---- families ---------------------------------------------------------
     body = ["<h2>Failure families</h2>"]
-    latest_ids = {d["id"] for d in (latest or {}).get("documents", [])}
-    latest_dir = (latest or {}).get("_dir", "")
+    # Families link to the newest run that measured each of their documents.
+    newest: dict[str, str] = {}
+    for run in runs:
+        for doc in run.get("documents", []):
+            newest[doc["id"]] = run["_dir"]
     if families:
         for fam in families:
             doc_links = []
             for doc_id in fam["docs"]:
-                if doc_id in latest_ids:
+                run_id = newest.get(doc_id)
+                if run_id:
                     doc_links.append(
-                        f'<a class="mono" href="documents/{latest_dir}/{_esc(doc_id)}.html">'
+                        f'<a class="mono" href="documents/{run_id}/{_esc(doc_id)}.html">'
                         f"{_esc(doc_id)}</a>"
                     )
                 else:
