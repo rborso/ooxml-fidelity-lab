@@ -58,7 +58,7 @@ tail -1 private/build/lane-up-vs-builtclean.log
 tail -1 private/build/lane-builtclean-vs-builtcustom.log
 
 cat > private/build/three-lane.json <<EOF
-{"reference": "$REF", "upstream": "$UP", "built_clean": "$BC", "built_custom": "$BU"}
+{"reference": "$REF", "upstream": "$UP", "built-clean": "$BC", "built-custom": "$BU"}
 EOF
 echo
 cat private/build/three-lane.json

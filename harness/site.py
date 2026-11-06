@@ -307,7 +307,7 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
                 and ref_pdf and cand_pdf):
             heat = []
             for page in sorted(visual.get("pages", []),
-                               key=lambda p: -p.get("fraction", 0))[:3]:
+                               key=lambda p: -p.get("fraction", 0))[:1]:
                 if page.get("fraction", 0) <= 0:
                     continue
                 img = media_root / doc_id / f"diff-{page['page']}.png"
@@ -746,6 +746,8 @@ def build_from_repo(repo: Path, out: Path | None = None) -> dict:
     if lanes_file.exists():
         try:
             lanes = json.loads(lanes_file.read_text())
+            # Older three-lane.sh wrote underscores; accept both spellings.
+            lanes = {k.replace("_", "-"): v for k, v in lanes.items()}
         except (OSError, json.JSONDecodeError):
             lanes = {}
     return build(repo / "private" / "runs", repo / "docs" / "families", out, lanes=lanes)
