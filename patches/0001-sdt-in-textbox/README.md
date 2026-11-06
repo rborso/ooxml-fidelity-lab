@@ -18,12 +18,17 @@ other block content.
 
 Scope, precisely:
 
-- `writerfilter/source/ooxml/` — the shape text-body context's accepted element table
-- `writerfilter/source/dmapper/SdtHelper.cxx` — only if the block-level form needs
+- `sw/source/writerfilter/ooxml/` — the shape text-body context's accepted element table
+- `sw/source/writerfilter/dmapper/SdtHelper.cxx` — only if the block-level form needs
   placeholder handling suppressed; a block `sdt` has no placeholder run
 - a narrower first version can treat `sdt` there as a transparent wrapper and import
   `w:sdtContent`'s children. That restores the text but loses control semantics, so it is a
   stopgap rather than the fix
+
+**Path note:** from 26.2 the `writerfilter` module is merged into `sw`. The dmapper lives at
+`sw/source/writerfilter/dmapper/`, not the standalone `writerfilter/` tree that older
+branches use. A patch written against the old path will not apply, and the regression test
+belongs at `sw/qa/writerfilter/dmapper/`.
 
 ## Apply
 
