@@ -19,7 +19,7 @@ mkdir -p "$(dirname "$LOG")" "$BUILD"
 CONFIGURE_FLAGS=${CONFIGURE_FLAGS:---enable-ccache --with-lang=en-US --without-java \
 --disable-odk --without-help --without-myspell-dicts --disable-dependency-tracking \
 --disable-scripting-beanshell --disable-scripting-javascript \
---disable-avmedia --disable-gstreamer-1-0}
+--disable-gstreamer-1-0}
 
 log() { printf '%s  %s\n' "$(date -Is)" "$*" | tee -a "$LOG" >&2; }
 
@@ -73,6 +73,10 @@ case "$step" in
 
   build)
     timed build make -j"$(nproc)"
+    # Success marker. The `soffice` wrapper exists even in a half-built tree,
+    # so its presence proves nothing; this file only appears when make exits 0.
+    touch "$SRC/instdir/program/.build-ok"
+    log "build marker written"
     ;;
 
   snapshot-clean)
@@ -83,13 +87,15 @@ case "$step" in
 
   stub-patch)
     # Stand-in for a real fix: it must compile, and it must touch the module
-    # the real patch targets. Measures the true cost of one iteration.
+    # the real patch targets. Pick a file that exists in this revision rather
+    # than assuming a path.
     f=writerfilter/source/dmapper/SdtHelper.cxx
-    [ -f "$f" ] || { log "no $f"; exit 1; }
+    [ -f "$f" ] || f=$(ls writerfilter/source/dmapper/*.cxx 2>/dev/null | head -1)
+    [ -n "${f:-}" ] && [ -f "$f" ] || { log "no writerfilter dmapper source to patch"; exit 1; }
     if ! grep -q "ooxml-fidelity-lab stand-in" "$f"; then
       sed -i '1i // ooxml-fidelity-lab stand-in: measures one incremental rebuild.\n' "$f"
       git diff > "$BUILD/stub.patch"
-      log "stub patch written to $BUILD/stub.patch"
+      log "stub patch written to $BUILD/stub.patch (file: $f)"
     else
       log "stub patch already applied"
     fi
