@@ -86,3 +86,19 @@ The lesson is the same one the minimizer taught: a proxy that does not match the
 harness's own extractor produces confident nonsense. `pdftotext` and pymupdf
 disagree on wrapped text, and a count of an exact string across a line break is
 not a measurement of presence.
+
+## Re-tested with the right oracle
+
+The `BT_LR -> TB_RL` mapping was retried with pymupdf as the measure, since the
+earlier "null" result was taken with the broken proxy.
+
+| document | baseline | mapped |
+|---|---|---|
+| synthetic `vt-vert` | text present, wrapped | `VERTICAL` as one word — vertical layout applied |
+| bz69175 | `Experience` 1, `King...` 11 | `Experience` 0, `King...` 10 |
+
+So the mapping helps the synthetic and makes the real document slightly worse.
+It fixes the wrapping on a document that already rendered and degrades one that
+clipped. Not the fix; reverted.
+
+Iterations spent on this family: 6. Parked per the working rule.
