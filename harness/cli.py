@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import compare as cmp
 from . import corpus as corpus_mod
-from . import constructs, extract, pixels, render, synth
+from . import constructs, extract, minimize, pixels, render, synth
 from . import probe as probe_mod
 
 DEFAULT_TOLERANCES = {"t2": {"median_pt_max": 1.0, "p95_pt_max": 4.0}}
@@ -621,7 +621,35 @@ def build_parser() -> argparse.ArgumentParser:
     cn.add_argument("--query", default="")
     cn.set_defaults(func=cmd_constructs)
 
+    mz = sub.add_parser("minimize", help="shrink a document until only the bug remains")
+    mz.add_argument("docx")
+    mz.add_argument("--token", required=True, help="text that should render but does not")
+    mz.add_argument("--out", default="")
+    mz.add_argument("--soffice", default="")
+    mz.add_argument("--max-candidates", type=int, default=150)
+    mz.set_defaults(func=cmd_minimize)
+
     return p
+
+
+def cmd_minimize(args: argparse.Namespace) -> int:
+    binary = args.soffice or os.environ.get("CLEAN_SOFFICE") or \
+        "build/instdir-clean/program/soffice"
+    if not Path(binary).exists():
+        print(f"no binary at {binary}; pass --soffice", file=sys.stderr)
+        return 2
+    src = Path(args.docx)
+    out = Path(args.out) if args.out else src.with_name(src.stem + ".min.docx")
+    predicate = minimize.render_predicate(binary, args.token, Path("/tmp/minimize-render"))
+    try:
+        info = minimize.minimize_deep(src, out, predicate, args.max_candidates)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(f"elements {info['elements_before']} -> {info['elements_after']}"
+          f" in {info['candidates_tried']} candidate(s)")
+    print(f"wrote {info['out']}")
+    return 0
 
 
 def cmd_probe(args: argparse.Namespace) -> int:

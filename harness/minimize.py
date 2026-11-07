@@ -73,6 +73,129 @@ def ddmin(count: int, fails) -> list[int]:
     return keep
 
 
+def document_text(path: Path) -> str:
+    """Concatenated text of every w:t, ignoring run boundaries.
+
+    A token that Word splits across runs never appears as a contiguous string in
+    the XML, so searching the raw markup would say the text was never there.
+    """
+    with zipfile.ZipFile(path) as archive:
+        xml = archive.read(DOCUMENT)
+    root = etree.fromstring(xml)
+    parts = [node.text or "" for node in root.iter(f"{{{W}}}t")]
+    return "".join(parts)
+
+
+def render_predicate(binary: str, token: str, workdir: Path):
+    """The token must be in the document and missing from the render.
+
+    "Missing from the render" alone is degenerate: deleting the paragraph that
+    carries the text keeps it missing, so the minimizer happily deletes the very
+    content under investigation and converges on an empty document that proves
+    nothing. Requiring the token to still be present in the source makes every
+    deletion a decision about the surviving text.
+    """
+    import subprocess
+
+    workdir.mkdir(parents=True, exist_ok=True)
+
+    def predicate(path: Path) -> bool:
+        try:
+            if token not in document_text(path):
+                return False
+        except (KeyError, zipfile.BadZipFile, OSError):
+            return False
+        for old in workdir.glob("*.txt"):
+            old.unlink()
+        try:
+            subprocess.run(
+                [binary, "--headless", "--norestore", "--convert-to", "txt",
+                 "--outdir", str(workdir), str(path)],
+                capture_output=True, timeout=180, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        produced = list(workdir.glob("*.txt"))
+        if not produced:
+            return False
+        return token not in produced[0].read_text(encoding="utf-8", errors="replace")
+
+    return predicate
+
+
+def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) -> dict:
+    """Reduce any subtree, not just body children.
+
+    ddmin over body children cannot isolate a construct nested inside a shape:
+    the whole paragraph is either kept or dropped, and the paragraph is the
+    document. This removes arbitrary subtrees instead, deepest-first in effect,
+    because a container is only queued once its parent refused to drop it.
+
+    lxml is used deliberately: it round-trips namespace prefixes unchanged, and
+    `mc:Ignorable` refers to prefixes by name.
+    """
+    with zipfile.ZipFile(src) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    root = etree.fromstring(entries[DOCUMENT])
+    body = root.find(f"{{{W}}}body")
+    before = sum(1 for _ in root.iter())
+    tried = 0
+
+    def fails() -> bool:
+        nonlocal tried
+        if tried >= max_candidates:
+            return False
+        tried += 1
+        scratch = dst.with_name(dst.stem + ".candidate.docx")
+        entries[DOCUMENT] = etree.tostring(root, xml_declaration=True,
+                                           encoding="UTF-8", standalone=True)
+        with zipfile.ZipFile(scratch, "w", zipfile.ZIP_DEFLATED) as archive:
+            for name, data in entries.items():
+                archive.writestr(name, data)
+        try:
+            return bool(predicate(scratch))
+        finally:
+            scratch.unlink(missing_ok=True)
+
+    if not fails():
+        raise ValueError("predicate does not hold on the source document")
+
+    queue = [body]
+    while queue and tried < max_candidates:
+        parent = queue.pop(0)
+        for child in list(parent):
+            if tried >= max_candidates:
+                break
+            if len(child) == 0:
+                continue
+            index = parent.index(child)
+            parent.remove(child)
+            if fails():
+                continue
+            parent.insert(index, child)
+            queue.append(child)
+
+    write_subset_raw(src, dst, root)
+    return {
+        "elements_before": before,
+        "elements_after": sum(1 for _ in root.iter()),
+        "candidates_tried": tried,
+        "out": str(dst),
+    }
+
+
+def write_subset_raw(src: Path, dst: Path, root) -> None:
+    """Write `dst` from `src`, replacing document.xml with the given tree."""
+    with zipfile.ZipFile(src) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    entries[DOCUMENT] = etree.tostring(root, xml_declaration=True,
+                                       encoding="UTF-8", standalone=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+
+
 def minimize_docx(src: Path, dst: Path, predicate, max_candidates: int = 400) -> dict:
     """Reduce `src` until `predicate(path)` stops holding.
 
