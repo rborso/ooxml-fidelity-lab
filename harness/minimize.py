@@ -86,7 +86,7 @@ def document_text(path: Path) -> str:
     return "".join(parts)
 
 
-def render_predicate(binary: str, token: str, workdir: Path):
+def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = True):
     """The token must be in the document and missing from the render.
 
     "Missing from the render" alone is degenerate: deleting the paragraph that
@@ -94,17 +94,31 @@ def render_predicate(binary: str, token: str, workdir: Path):
     content under investigation and converges on an empty document that proves
     nothing. Requiring the token to still be present in the source makes every
     deletion a decision about the surviving text.
+
+    `keep_count` also pins how many times the token occurs. Word duplicates a
+    shape's text into both `mc:Choice` and `mc:Fallback`; without the count the
+    minimizer deletes the Choice and keeps the Fallback, producing a document
+    that Word would render and LibreOffice drops - a different bug than the one
+    being investigated, arrived at by accident.
     """
     import subprocess
 
     workdir.mkdir(parents=True, exist_ok=True)
+    expected: list[int] = []
 
     def predicate(path: Path) -> bool:
         try:
-            if token not in document_text(path):
-                return False
+            text = document_text(path)
         except (KeyError, zipfile.BadZipFile, OSError):
             return False
+        count = text.count(token)
+        if count == 0:
+            return False
+        if keep_count:
+            if not expected:
+                expected.append(count)   # first call is the source document
+            elif count != expected[0]:
+                return False
         for old in workdir.glob("*.txt"):
             old.unlink()
         try:
@@ -161,8 +175,17 @@ def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) ->
         raise ValueError("predicate does not hold on the source document")
 
     queue = [body]
+    MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
     while queue and tried < max_candidates:
         parent = queue.pop(0)
+        # Never break an AlternateContent pair. Word duplicates the same content
+        # into mc:Choice and mc:Fallback, and deleting the Choice leaves a
+        # Fallback-only block, which is invalid, changes which code path the
+        # renderer takes, and manufactures a bug that is not the one under
+        # investigation. The first run of this reducer did exactly that and the
+        # "confirmed cause" it produced was an artefact of the reducer.
+        if parent.tag == MC + "AlternateContent":
+            continue
         for child in list(parent):
             if tried >= max_candidates:
                 break
