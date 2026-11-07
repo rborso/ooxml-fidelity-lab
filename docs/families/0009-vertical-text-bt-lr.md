@@ -181,3 +181,25 @@ the text placed in it.
 
 Two invalid reproducers in one family is the reason this has taken so long: each
 one "confirmed" a mechanism that did not exist in the real document.
+
+## Trace on the real document: wrong subsystem
+
+Probe in `SwTextFrame::Format_` printing writing mode and frame print area, run
+on `bz69175`:
+
+```
+FFRM vert=0 swapped=0 area=9901x0  text=[Please complete this application form if]
+FFRM vert=0 swapped=0 area=10200x0 text=[King's Global Award]
+FFRM vert=0 swapped=0 area=5024x0  text=[King's student ID no.:]
+```
+
+The probe fires for body paragraphs only. **The vertical text box content never
+reaches `SwTextFrame`** — it is laid out by drawinglayer on the shape, not by
+sw's text layout. So every frame-geometry question asked of `sw` here was asked
+of the wrong subsystem.
+
+That also explains why `SwTextBoxHelper::syncProperty` is never called for these
+shapes: they are drawing objects, not Writer frames.
+
+The remaining work is in `svx`/`drawinglayer` text layout for a rotated fixed-size
+shape with `layout-flow:vertical`. Nothing in `sw` will answer it.
