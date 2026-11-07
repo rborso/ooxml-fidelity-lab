@@ -292,7 +292,7 @@ def _build_document_pages(runs_dir: Path, run: dict, out_dir: Path, families: li
         if visual:
             sev, worst, pat = _visual(doc)
             body.append(
-                f'<p>Visual: {_sev_badge(sev)}'
+                f'<p>Visual (parked, experimental): {_sev_badge(sev)}'
                 f' &middot; worst page {float(worst or 0) * 100:.2f}% pixels changed'
                 + (f' &middot; {_esc(pat)}' if pat and pat != "none" else "")
                 + f' &middot; {visual.get("pages_ref", "?")} vs {visual.get("pages_cand", "?")} pages</p>'
@@ -575,7 +575,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
         body.append("</div>")
 
         body.append("<h2>Documents in this run</h2><table><tr><th>Document</th><th>Tier</th>"
-                    "<th>Visual</th><th>Score</th><th>Median&nbsp;pt</th><th>p95&nbsp;pt</th>"
+                    "<th>Visual (parked)</th><th>Score</th><th>Median&nbsp;pt</th><th>p95&nbsp;pt</th>"
                     "<th>Fonts</th><th>Pages</th></tr>")
         for doc in latest["documents"]:
             t2 = doc.get("t2") or {}

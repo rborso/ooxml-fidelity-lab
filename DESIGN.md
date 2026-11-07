@@ -130,7 +130,7 @@ turns a useful report into a wall of red.
 Font substitution report is emitted alongside T2: which font names were requested,
 which were found, which were substituted.
 
-**The visual axis (T3), implemented.** Every document also carries a pixel verdict,
+**The visual axis (T3): parked.** Every document also carries a pixel verdict,
 independent of the text tiers: both PDFs rasterised at 72 dpi, compared per page, and
 reported as changed fraction plus bounding box plus a red-on-grey heatmap. It is a
 separate axis rather than a tier because "the text is right" and "it looks right" are
@@ -144,6 +144,22 @@ exactly 0.0, so the metric has a zero floor and any non-zero value is the other 
 What it sees that text cannot: borders, fills, shading, images, and glyph-level
 differences such as a wrong weight or a distorted curve. What it still cannot see is
 meaning — a content control imported as plain text keeps every pixel of its text.
+
+**Parked.** Two engines never rasterise identically, so a per-page fraction measures
+typography as much as layout: everything above was measured, and three of the text-PASS
+documents it flagged were pure glyph rasterisation. Off by default (`--pixels`), code and
+tests retained. What must change before it returns — mask the text boxes and diff only
+non-text content, and give layout its own tolerance-based tier — is in
+`docs/PIXELS-PARKED.md`.
+
+Changed fraction alone cannot say *which kind* of difference it is, so the tier also
+reports density (changed pixels / changed bbox area) and calls the pattern `diffuse`
+when density is below 0.20 and `concentrated` above it. A substituted font changes a few
+pixels in every glyph, so the box spans the text block while the ink inside it is thin; a
+moved block or a missing image changes most of a small region. First corpus measurement:
+258 diffuse, 62 concentrated, and the only three text-PASS documents above the 2% band
+are all diffuse — glyph rasterisation, not layout. The concentrated set is where a human
+should look first.
 
 ### 3.6 Scorer
 - Per-document: `score = f(T0, T1, T2)` — T0 failure caps the score at 0.
