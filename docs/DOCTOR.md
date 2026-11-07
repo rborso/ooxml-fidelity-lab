@@ -29,8 +29,17 @@ zip works too. Every later step is faster on a small file.
 
 ## 3. Trace the parser
 
-Our build is not `--enable-product`, so `SAL_INFO`/`SAL_WARN` are compiled in
-and filtered at runtime. No special build needed:
+The baseline tree is built without `--enable-dbgutil`, so `SAL_INFO`/`SAL_WARN`
+are **compiled out** and `SAL_LOG` prints nothing. That was discovered the hard
+way: six patch attempts were made against a build that could not produce a
+trace. Use the instrumented tree instead (`scripts/host/build-dbg.sh`, separate
+on purpose, never used for a score):
+
+```bash
+build-dbg/core/instdir/program/soffice ...   # this one logs
+```
+
+With the baseline tree, the command below produces nothing:
 
 ```bash
 SAL_LOG="+writerfilter" \
