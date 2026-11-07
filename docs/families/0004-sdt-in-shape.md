@@ -146,3 +146,38 @@ all?** Plain paragraphs in the same textbox render, so it is parsed by something
 whatever that path is, it does not deliver an `w:sdt` subtree to the domain
 mapper as text. That is the next thing to trace, and it is a smaller question
 than the one this family started with.
+
+## Fix and retest
+
+One condition in `oox/source/vml/vmltextboxcontext.cxx`:
+
+```diff
+ case W_TOKEN(txbxContent):
+-    if (nElement == W_TOKEN(p)) return this;
++    if (nElement == W_TOKEN(p) || nElement == W_TOKEN(sdt))
++        return this;
+```
+
+`TextBoxContext::onCreateContext()` accepted only `w:p` as a child of
+`w:txbxContent`; an `w:sdt` returned `nullptr` and the subtree was never parsed.
+The `sdt` and `sdtContent` cases already in the same switch handle the inside.
+
+Corpus, 325 documents, clean versus patched, one reference set:
+
+| metric | clean | patched |
+|---|---|---|
+| mean | 0.5208 | 0.5238 |
+| T0 | 75 | 73 |
+| T1 | 59 | 60 |
+| T2 | 30 | 31 |
+
+```
+compared=325 improved=2 degraded=0 unchanged=323
+  bz31914-40567        T0 -> T1   +0.25
+  bz31914-sdt-textbox  T0 -> T2   +0.75
+```
+
+`bz67339-83023`, the third T0 with this construct, is unchanged: it belongs to
+family 0007 (pagination), not to this one. Two of three, no regressions.
+
+Runs: clean `run-20261107T094413Z`, patched `run-20261107T095145Z`.

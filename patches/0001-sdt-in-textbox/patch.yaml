@@ -15,8 +15,8 @@ custom:
 
 reproducer: "bz31914-sdt-textbox"
 expected:
-  before: "T0 — 8 tokens absent, page count 1 vs 2"
-  after: "PASS or SEGMENT — all characters present"
+  before: "T0 — the control text never reaches the document model"
+  after: "T2 — text present, 8 pt geometry difference"
 
 files:
   - "oox/source/vml/vmltextboxcontext.cxx"
