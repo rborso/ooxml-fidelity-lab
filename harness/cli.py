@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import sys
 from collections import Counter
@@ -16,7 +17,8 @@ from pathlib import Path
 
 from . import compare as cmp
 from . import corpus as corpus_mod
-from . import extract, pixels, render, synth
+from . import constructs, extract, pixels, render, synth
+from . import probe as probe_mod
 
 DEFAULT_TOLERANCES = {"t2": {"median_pt_max": 1.0, "p95_pt_max": 4.0}}
 
@@ -604,6 +606,83 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--contains", action="append", required=True)
     ex.add_argument("--mode", choices=["all", "any"], default="all")
     ex.set_defaults(func=cmd_extract)
+
+    pr = sub.add_parser("probe", help="which pipeline stage lost the content")
+    pr.add_argument("docx")
+    pr.add_argument("--token", required=True)
+    pr.add_argument("--soffice", default="")
+    pr.add_argument("--timeout", type=int, default=180)
+    pr.set_defaults(func=cmd_probe)
+
+    cn = sub.add_parser("constructs", help="build or query the construct index")
+    cn.add_argument("--corpus", default="private/corpus")
+    cn.add_argument("--out", default="private/build/constructs.json")
+    cn.add_argument("--rebuild", action="store_true")
+    cn.add_argument("--query", default="")
+    cn.set_defaults(func=cmd_constructs)
+
+    return p
+
+
+def cmd_probe(args: argparse.Namespace) -> int:
+    binary = args.soffice or os.environ.get("CLEAN_SOFFICE") or \
+        "build/instdir-clean/program/soffice"
+    if not Path(binary).exists():
+        print(f"no binary at {binary}; pass --soffice", file=sys.stderr)
+        return 2
+    try:
+        result = probe_mod.probe(Path(args.docx), args.token, binary, args.timeout)
+    except probe_mod.ProbeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    for fmt, data in result["stages"].items():
+        print(f"{fmt:5s} {'found' if data['found'] else 'missing':8s} "
+              f"({data['occurrences']} occurrence(s))")
+    print(f"\nverdict: {result['verdict']}")
+    return 0 if result["stages"]["txt"]["found"] else 1
+
+
+def cmd_constructs(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    index = {} if args.rebuild else constructs.load(out)
+    if not index:
+        corpus = Path(args.corpus)
+        # The corpus is split across sidecars (bugzilla, hu-gov, denmark, derived,
+        # known-good, ...). Reading only manifest.yaml indexed a third of it.
+        sidecars = [p for p in sorted(corpus.glob("*.yaml")) if p.name != "overrides.yaml"]
+        names: dict[str, str] = {}
+        entries: list[tuple[str, Path]] = []
+        if sidecars:
+            import yaml
+            for sidecar in sidecars:
+                data = yaml.safe_load(sidecar.read_text()) or {}
+                for item in data.get("items", []):
+                    path = str(item.get("path", ""))
+                    if not path.endswith((".docx", ".doc")):
+                        continue
+                    full = corpus / path
+                    entries.append((item["id"], full))
+                    names[str(full)] = item["id"]
+        if entries:
+            docs = [p for _, p in entries]
+        else:
+            docs = sorted(corpus.rglob("*.docx"))
+        print(f"indexing {len(docs)} document(s)")
+        index = constructs.build(docs, out, names)
+    if args.query:
+        hits = constructs.query(index, args.query)
+        for name in hits:
+            print(name)
+        print(f"\n{len(hits)} of {len(index)} document(s) contain {args.query!r}")
+        return 0
+    print(f"{len(index)} document(s) indexed in {out}")
+    counts: dict[str, int] = {}
+    for data in index.values():
+        for name, n in (data.get("counts") or {}).items():
+            counts[name] = counts.get(name, 0) + n
+    for name, n in sorted(counts.items(), key=lambda kv: -kv[1])[:10]:
+        print(f"  {name:22s} {n}")
+    return 0
 
     rt = sub.add_parser("roundtrip", help="convergence and format churn for one document")
     rt.add_argument("--doc", required=True)
