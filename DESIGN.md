@@ -161,6 +161,17 @@ moved block or a missing image changes most of a small region. First corpus meas
 are all diffuse — glyph rasterisation, not layout. The concentrated set is where a human
 should look first.
 
+**The placement axis.** Median and p95 displacement cannot see a localized
+defect: one table moved 52 pt among a whole document barely moves a percentile.
+`harness/placement.py` checks three things directly — content outside the area
+the reference uses, a word moved more than 30 pt along the same line, and a box
+leaving the page — with each candidate word claimable once so repeated words do
+not pair with the wrong instance.
+
+Measured over the 321 documents of run-20261107T112104Z: every one of the 80
+PASS documents is clean, so the axis has no false positives where it matters,
+while it flags `hu-gov-9.21` as breaking (text at x=3 where the margin is 55).
+
 ### 3.6 Scorer
 - Per-document: `score = f(T0, T1, T2)` — T0 failure caps the score at 0.
 - Per-class aggregate: distribution, not mean. Report p50 / p95 and the count of fatal

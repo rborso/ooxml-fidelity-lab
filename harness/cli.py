@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import compare as cmp
 from . import corpus as corpus_mod
-from . import constructs, extract, minimize, pixels, render, synth
+from . import constructs, extract, minimize, pixels, placement, render, synth
 from . import probe as probe_mod
 
 DEFAULT_TOLERANCES = {"t2": {"median_pt_max": 1.0, "p95_pt_max": 4.0}}
@@ -186,6 +186,10 @@ def cmd_run(args: argparse.Namespace) -> int:
         ref = extract.extract_layout(refs[doc_id])
         cand = extract.extract_layout(cand_pdf)
         res = cmp.compare(ref, cand, {**tol, **overrides.get(doc_id, {})})
+        # Geometry a human would notice: content in the margin, a block moved,
+        # a box leaving the page. The tiered comparator reports medians, which
+        # cannot see a single misplaced table.
+        res["placement"] = placement.check(ref, cand)
         # Parked, off by default. Two engines never rasterise identically, so a
         # per-page pixel fraction measures hinting as much as layout. See
         # docs/PIXELS-PARKED.md for the measurements and for what has to change
