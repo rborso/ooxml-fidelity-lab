@@ -99,3 +99,39 @@ namespace/token sets decide whether an element goes to writerfilter or to oox.
 
 Next step is an instrumented run of that replay path, not another guess at the
 dmapper.
+
+## The fix (2026-11-07)
+
+`oox/source/vml/vmltextboxcontext.cxx`, one condition:
+
+```diff
+         case W_TOKEN(txbxContent):
+-            if (nElement == W_TOKEN(p)) return this;
++            if (nElement == W_TOKEN(p) || nElement == W_TOKEN(sdt))
++                return this;
+         break;
+```
+
+`TextBoxContext::onCreateContext()` accepts only `w:p` as a child of
+`w:txbxContent`. An `w:sdt` returns `nullptr`, so the element and everything
+under it is never parsed and its text never reaches the document model. The
+`sdt` and `sdtContent` cases already in the same switch handle the inside of the
+control, so only the wrapper had to be admitted.
+
+Measured: `bz31914-sdt-textbox` renders "CME Offshore" once with the patch and
+zero times without it, both PDFs, same binary otherwise.
+
+### Why the earlier attempts failed
+
+They all patched the domain mapper. The text never gets there: the loss is one
+layer earlier, in the VML textbox parser. A trace of
+`SdtHelper::createPlainTextControl()` fires zero times for this document, which
+is what pointed at the parser.
+
+### Revert
+
+```bash
+cd build/core && git apply -R ../../patches/0001-sdt-in-textbox/fix.patch
+scripts/host/build-timed.sh build-incremental   # ~10 s
+scripts/host/build-timed.sh snapshot-custom
+```
