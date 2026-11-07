@@ -93,3 +93,35 @@ Pending. Pass condition: `missing 0`.
 | Run | Renderer digest | Oracle build | Result |
 |---|---|---|---|
 | run-20261105T194923Z | `sha256:808410e7…` (26.04.5.2) | 16.0.19127.20860 | open — 8 tokens missing |
+
+## Verified (PDF oracle, 2026-11-07)
+
+Earlier evidence in this record came from `--convert-to txt`, which returns
+nothing for these documents even when they render, so it could not distinguish
+"lost" from "not exported". Re-measured against the rendered PDF:
+
+| variant | "CME Offshore" in PDF |
+|---|---|
+| original | 0 |
+| `w:sdt` removed from the textbox | 0 (frame renders empty) |
+| **`w:sdt` replaced by a plain `w:p` with the same text** | **1** |
+
+So the shape text body is imported correctly and the failure is caused by the
+`w:sdt` node itself. That is the claim this family was opened with, now measured
+on a valid document with the same oracle the harness uses.
+
+The document has six `w:sdt` elements: one at body level, five inside
+`w:txbxContent`. The body-level one is unaffected; only the textbox ones fail.
+
+## Where it is not
+
+- `IsInShape()` is **false** while the textbox sdt is imported, so guards on it
+  never fire — the two patch attempts recorded above were dead branches.
+- the domain mapper does receive `LN_CT_SdtBlock_sdtContent` (traced), so the
+  parser and the generated element mapping are both innocent.
+- removing `w:dataBinding`, removing `w:sdtPr` entirely, and removing `<w:text/>`
+  all still lose the text.
+
+Next: trace `SdtHelper::createPlainTextControl()` and what happens to the
+paragraph inserted by `appendTextPortion` when the control range belongs to a
+text frame rather than the body text.
