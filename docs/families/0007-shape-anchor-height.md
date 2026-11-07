@@ -77,6 +77,31 @@ not one document.
 | Family documents failing | 11 | — |
 | Corpus-wide new failures | — | — |
 
+## Controlled experiment (negative)
+
+Zeroing every `wp:extent/@cy` across the family and 20 known-good controls:
+
+| document | Word | unchanged | `cy=1` | extents |
+|---|---|---|---|---|
+| bz55459-67866 | 15 | 21 | **16** | 25 |
+| bz75208-157040 | 174 | 173 | **165** | 108 |
+| bz76022-186252 | 2 | 2 | **1** | 2 |
+| bz67339-83023 | 3 | 4 | 4 | 9 |
+| bz72388-151985 | 3 | 4 | 4 | 2 |
+| 14 other family documents | — | unchanged | unchanged | — |
+| 20 known-good controls | 1 | 1 | 1 | 0 |
+
+The height effect is real for `bz55459` and does not generalise. On
+`bz75208-157040` zeroing the heights moves the page count **further** from
+Word's 174, and on `bz76022` it turns a match into a mismatch.
+
+So `anchoredobject` is not one bug with one fix. Either the family is
+heterogeneous — several distinct pagination causes wearing the same construct —
+or the height is only one contributor and its sign depends on the document.
+
+A patch that added the height to the flow in one case and not the other would
+need a condition nobody has evidence for yet. **No patch.**
+
 ## History
 
 | Run | Renderer | Result |
