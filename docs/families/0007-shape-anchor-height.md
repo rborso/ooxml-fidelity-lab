@@ -107,3 +107,31 @@ need a condition nobody has evidence for yet. **No patch.**
 | Run | Renderer | Result |
 |---|---|---|
 | run-20261107T045411Z | built-clean 4cce0ff5 | open |
+
+## Splitting the family
+
+Anchor attributes for every family document (first anchor; `behind` = behindDoc,
+`n` = number of anchors):
+
+| document | Word pages | n | behind | wrap modes | vFrom | hFrom |
+|---|---|---|---|---|---|---|
+| bz55459-67866 | 15 | 4 | 0 | none, tight | paragraph | column |
+| bz75208-157040 | 174 | 1 | 0 | tight | paragraph | column |
+| bz76022-186252 | 2 | 2 | 1 | square, tight | paragraph | column |
+| bz67339-83023 | 3 | 9 | 0 | none, square, tight, topAndBottom | page | page |
+| bz62613-157544 | 13 | 1 | 0 | none | paragraph | column |
+| bz31914-138994 | 7 | 1 | 0 | none | margin | page |
+| bz65260-80150 | 1 | 1 | 0 | square | margin | margin |
+| bz69864-86699 | 2 | 1 | 1 | none | page | page |
+| bz75154-163518 | 3 | 1 | 1 | square | paragraph | margin |
+
+No split follows from these: the two documents whose behaviour differs most
+(`bz55459` improves when heights are zeroed, `bz75208` worsens) share
+`behindDoc=0`, `paragraph/column` and a tight wrap. The count differs, 4 against
+1, and so does the mix of wrap modes, but neither gives a rule.
+
+**Conclusion:** the construct does not identify one bug. Nineteen documents share
+a shape construct; the pagination divergence has at least two causes and the
+anchor attributes measured here do not separate them. This family is not
+patchable from evidence the project currently has, and the honest move is to
+leave it `isolated` rather than invent a condition.
