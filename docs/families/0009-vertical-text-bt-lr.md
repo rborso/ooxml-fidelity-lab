@@ -102,3 +102,23 @@ It fixes the wrapping on a document that already rendered and degrades one that
 clipped. Not the fix; reverted.
 
 Iterations spent on this family: 6. Parked per the working rule.
+
+## Instrumented build, first result
+
+`scripts/host/build-dbg.sh` builds a second tree with `--enable-sal-log`, which
+turns `SAL_INFO`/`SAL_WARN` on at the release optimisation level. Two attempts
+before it failed: `--enable-dbgutil` forces `_GLIBCXX_DEBUG`, which bundled
+zxing does not compile under, and `--enable-debug` disables optimisation and
+projects a seven-hour build. Final build: **9,934 s (2 h 45 m)**.
+
+Tracing works: a single render produces 18,232 log lines, and
+`sax.fastparser` reports element-level detail including `v:textbox`.
+
+First result, and it eliminates the obvious next guess: with a temporary
+`SAL_INFO` in `SwTextBoxHelper::syncProperty`, neither the horizontal nor the
+vertical variant produces a single line. **The VML text box does not go through
+the text-frame property sync at all**, so `TextWritingMode` never reaches it
+that way, and the earlier property experiments could not have worked.
+
+Next: trace the drawing-layer shape and text-frame creation for a VML text box,
+which is a different path from the one the property code serves.

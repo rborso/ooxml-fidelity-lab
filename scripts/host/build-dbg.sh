@@ -3,8 +3,11 @@
 #
 #   build-dbg.sh
 #
-# The baseline tree is built without --enable-dbgutil, so SAL_INFO and SAL_WARN
-# are compiled out and `SAL_LOG=+writerfilter` prints nothing. Every diagnosis in
+# The baseline tree is a release build, so SAL_INFO and SAL_WARN are compiled
+# out. --enable-sal-log turns them on while keeping the release optimisation
+# level: --enable-dbgutil additionally forces _GLIBCXX_DEBUG, which bundled
+# zxing does not compile under, and --enable-debug disables optimisation and
+# turns the build into a seven-hour job. and `SAL_LOG=+writerfilter` prints nothing. Every diagnosis in
 # this project has therefore been done blind, by property changes and page
 # counts. This tree exists so a trace can be read instead.
 #
@@ -29,9 +32,9 @@ fi
 cd "$SRC"
 
 if [ ! -f config_host.mk ]; then
-  log "configuring with --enable-dbgutil"
+  log "configuring with --enable-sal-log"
   ./autogen.sh \
-    --enable-dbgutil --enable-ccache --with-lang=en-US --without-java \
+    --enable-sal-log --enable-ccache --with-lang=en-US --without-java \
     --disable-odk --without-help --without-myspell-dicts \
     --disable-dependency-tracking --disable-scripting-beanshell \
     --disable-scripting-javascript --disable-gstreamer-1-0 --with-galleries=no \
