@@ -59,3 +59,30 @@ build/instdir-clean/program/soffice --headless --norestore \
   --convert-to pdf --outdir /tmp/out /tmp/vt-vert.docx   # synthetic, 0 hits
 pdftotext /tmp/out/vt-vert.pdf - | grep -c "VERTICAL TEXT"
 ```
+
+## Correction (same day)
+
+The "renders nothing" reading was measured with `pdftotext | grep -c "VERTICAL
+TEXT"`, which returns zero when the renderer breaks the line. pymupdf, the
+extractor the harness actually uses, shows the text:
+
+```
+vt-horiz   'VERTICAL TEXT'
+vt-tbrl    'VERTICAL TEXT'
+vt-vert    'VERTICAL \nTEXT'     <- present, wrapped
+```
+
+So `BT_LR` does lay the text out. What it does with the corpus document is
+**clip** it: in `bz69175`, Word has four copies of "Experience" and LibreOffice
+one, while "King's" appears four times in both. The vertical frames cut the
+title after the first words — overflow is not painted.
+
+That makes this a different bug from the one the record described: not a missing
+writing mode, but a vertical frame that clips its text instead of growing or
+wrapping within it. The three property experiments were therefore testing the
+wrong property family entirely, which is why all three were null.
+
+The lesson is the same one the minimizer taught: a proxy that does not match the
+harness's own extractor produces confident nonsense. `pdftotext` and pymupdf
+disagree on wrapped text, and a count of an exact string across a line break is
+not a measurement of presence.
