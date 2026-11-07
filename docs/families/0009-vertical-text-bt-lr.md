@@ -122,3 +122,32 @@ that way, and the earlier property experiments could not have worked.
 
 Next: trace the drawing-layer shape and text-frame creation for a VML text box,
 which is a different path from the one the property code serves.
+
+## Trace: the vertical style never reaches the shape
+
+Probe in `oox/source/vml/vmlshape.cxx` at the point where the writing mode is
+computed, run against both synthetic variants:
+
+```
+vt-horiz   FBTLR flow= alt=        mode=0
+vt-vert    FBTLR flow= alt=        mode=0
+```
+
+`flow` is `TextBox::maLayoutFlow`, which `vmltextboxcontext.cxx:220` sets from
+the `layout-flow` style property. It is **empty for both**, so the writing mode
+is `LR_TB` in both cases and the vertical handling never runs.
+
+That also explains the earlier confusion: `vt-tbrl` appeared to render on one
+line only because clipping does not remove text from the PDF content stream —
+pymupdf still extracts clipped glyphs. All three variants were laid out the same
+way, horizontally, in a 60 pt box.
+
+So the family's real defect is one step earlier than every hypothesis so far:
+the `layout-flow` style is parsed into a `TextBox` object that the shape
+conversion does not read. Either two different `TextBox` instances are involved
+or the parse happens after the shape is built. That is the next thing to trace,
+and it is now a named object rather than a writing-mode theory.
+
+## Probes reverted
+
+The instrumented tree is back to a clean build; the probes were temporary.

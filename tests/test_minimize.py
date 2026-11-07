@@ -122,3 +122,17 @@ def test_document_text_joins_runs(tmp_path):
             archive.writestr(name, data)
     from harness.minimize import document_text
     assert document_text(source) == "Hello"
+
+
+def test_control_token_rejects_a_render_that_lost_everything(tmp_path, monkeypatch):
+    """A candidate that renders nothing must not count as a reproduction."""
+    from harness import minimize as m
+
+    src = build_docx(tmp_path / "c.docx", ["KEEP", "LOSE"])
+    pred = m.render_predicate("soffice", "LOSE", tmp_path / "w", control="KEEP")
+
+    monkeypatch.setattr(m, "render_text", lambda b, p, w: "KEEP")
+    assert pred(src) is True          # KEEP present, LOSE absent: reproduces
+
+    monkeypatch.setattr(m, "render_text", lambda b, p, w: "")
+    assert pred(src) is False         # nothing rendered: not a reproduction

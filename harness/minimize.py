@@ -122,14 +122,39 @@ def document_text(path: Path) -> str:
     return "".join(node.text or "" for node in root.iter(f"{{{W}}}t"))
 
 
-def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = True):
+def render_text(binary: str, path: Path, workdir: Path) -> str | None:
+    """Convert to PDF and return its text, or None if the render failed."""
+    import subprocess
+
+    for old in workdir.glob("*.pdf"):
+        old.unlink()
+    try:
+        subprocess.run(
+            [binary, "--headless", "--norestore", "--convert-to", "pdf",
+             "--outdir", str(workdir), str(path)],
+            capture_output=True, timeout=180, check=False,
+        )
+        produced = list(workdir.glob("*.pdf"))
+        if not produced:
+            return None
+        return subprocess.run(["pdftotext", str(produced[0]), "-"],
+                              capture_output=True, text=True, timeout=120).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = True,
+                     control: str | None = None):
     """The token must be in the document and missing from the rendered PDF.
 
-    The probe is the PDF, not `--convert-to txt`. On bz55459 the txt export
+    The probe is the PDF, not `--convert-to txt`: on bz55459 the txt export
     returns nothing while the PDF renders the text 21 times, so a txt-based
-    predicate reports "missing" for a document that renders correctly and the
-    minimizer spends its budget chasing an export quirk. The harness compares
-    PDFs; the predicate has to measure the same artefact.
+    predicate reports "missing" for a document that renders correctly.
+
+    `control` is a second token that must keep rendering. Without it a reducer
+    can delete the paragraph a shape is anchored to, or empty the document, and
+    "the token is missing" still holds - the reduction then proves nothing. With
+    it, every candidate has to stay a document that renders something.
     """
     import subprocess
 
@@ -149,25 +174,12 @@ def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = 
                 expected.append(count)   # first call is the source document
             elif count != expected[0]:
                 return False
-        for old in workdir.glob("*.pdf"):
-            old.unlink()
-        try:
-            subprocess.run(
-                [binary, "--headless", "--norestore", "--convert-to", "pdf",
-                 "--outdir", str(workdir), str(path)],
-                capture_output=True, timeout=180, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
+        rendered = render_text(binary, path, workdir)
+        if rendered is None:
             return False
-        produced = list(workdir.glob("*.pdf"))
-        if not produced:
+        if control and control not in rendered:
             return False
-        try:
-            rendered = subprocess.run(["pdftotext", str(produced[0]), "-"],
-                                      capture_output=True, text=True, timeout=120)
-        except (OSError, subprocess.TimeoutExpired):
-            return False
-        return token not in rendered.stdout
+        return token not in rendered
 
     return predicate
 
