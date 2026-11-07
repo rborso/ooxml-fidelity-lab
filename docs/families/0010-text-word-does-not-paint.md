@@ -67,3 +67,43 @@ and a change that makes Collabora clip tables could cost the content in family
 | Run | Result |
 |---|---|
 | run-20261107T112104Z | 6 × T0 with extra tokens |
+
+## The Hungarian forms also shift content out of the margin
+
+Reported by eye on `hu-gov-9.21 … k-ntes_tev-kenys-g_folytat-sa_HU`, confirmed by
+measurement on page 1:
+
+```
+Word      leftmost words: (55,304) '1.'  (55,360) '2.'  (55,439) '3.'  (56,496) '4.'
+Collab    leftmost words: (3,497) '4.'   (3,597) 'Megtakarítással'  (3,611) 'Megélhetését'
+```
+
+From item 4 onward, Collabora places the text at x≈3 — the page edge — where
+Word keeps it at the 55 pt margin. A 52 pt shift, and the content sits outside
+the printed margin.
+
+The document has two tables. The second is floating and 17175 twips wide:
+
+```xml
+<w:tblpPr w:leftFromText="141" w:rightFromText="141"
+          w:vertAnchor="text" w:horzAnchor="margin" w:tblpY="497"/>
+```
+
+## Four experiments, all null
+
+| change | `4.` position |
+|---|---|
+| none (source) | x = 3 |
+| `w:tblInd w:w="-395"` → `0` | x = 3 |
+| add `w:tblpX="0"` to `tblpPr` | x = 3 |
+| remove `tblpPr` entirely | x = 3 |
+
+The replacement strings were verified to match exactly (count = 1 each), so the
+experiments were real. LibreOffice's placement of this table is therefore not
+determined by indent, `tblpX`, or the presence of `tblpPr` — which contradicts
+what the import code appears to do and makes this a genuine tracing job rather
+than a property change.
+
+Under the project rules this **is** breaking, unlike the extra tokens this family
+was opened for: content outside the margin can be clipped when printed. The
+family now has two symptoms and needs splitting.
