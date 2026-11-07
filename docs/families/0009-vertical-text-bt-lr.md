@@ -203,3 +203,23 @@ shapes: they are drawing objects, not Writer frames.
 
 The remaining work is in `svx`/`drawinglayer` text layout for a rotated fixed-size
 shape with `layout-flow:vertical`. Nothing in `sw` will answer it.
+
+## What actually renders
+
+Text near the titles in the LibreOffice PDF, with boxes:
+
+```
+page 1  'King's'  (393,191)-(423,202)
+page 1  'The'     (76,284)-(94,295)
+page 4  'Experience/King's' (283,143)-(370,154)
+```
+
+`King's` appears throughout, `The` on two pages, `Experience` only inside one
+merged token. So the vertical frames **do** draw part of the title and drop the
+rest — this is truncation inside the shape, not a missing shape.
+
+The remaining question is therefore a product one as much as a code one: when a
+fixed-size rotated shape holds vertical text that does not fit, should the shape
+grow (Word appears to) or should the text be clipped (which is what happens)?
+That decision determines whether the fix is in `drawinglayer` text layout or in
+shape sizing, and it is not mine to make.
