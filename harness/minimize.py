@@ -123,7 +123,14 @@ def document_text(path: Path) -> str:
 
 
 def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = True):
-    """The token must be in the document and missing from the render."""
+    """The token must be in the document and missing from the rendered PDF.
+
+    The probe is the PDF, not `--convert-to txt`. On bz55459 the txt export
+    returns nothing while the PDF renders the text 21 times, so a txt-based
+    predicate reports "missing" for a document that renders correctly and the
+    minimizer spends its budget chasing an export quirk. The harness compares
+    PDFs; the predicate has to measure the same artefact.
+    """
     import subprocess
 
     workdir.mkdir(parents=True, exist_ok=True)
@@ -142,20 +149,25 @@ def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = 
                 expected.append(count)   # first call is the source document
             elif count != expected[0]:
                 return False
-        for old in workdir.glob("*.txt"):
+        for old in workdir.glob("*.pdf"):
             old.unlink()
         try:
             subprocess.run(
-                [binary, "--headless", "--norestore", "--convert-to", "txt",
+                [binary, "--headless", "--norestore", "--convert-to", "pdf",
                  "--outdir", str(workdir), str(path)],
                 capture_output=True, timeout=180, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return False
-        produced = list(workdir.glob("*.txt"))
+        produced = list(workdir.glob("*.pdf"))
         if not produced:
             return False
-        return token not in produced[0].read_text(encoding="utf-8", errors="replace")
+        try:
+            rendered = subprocess.run(["pdftotext", str(produced[0]), "-"],
+                                      capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return token not in rendered.stdout
 
     return predicate
 
