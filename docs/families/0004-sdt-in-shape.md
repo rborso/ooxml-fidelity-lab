@@ -125,3 +125,24 @@ The document has six `w:sdt` elements: one at body level, five inside
 Next: trace `SdtHelper::createPlainTextControl()` and what happens to the
 paragraph inserted by `appendTextPortion` when the control range belongs to a
 text frame rather than the body text.
+
+## Narrowed again (trace, 2026-11-07)
+
+`SdtHelper::createPlainTextControl()` is **never called** for this document: a
+`fprintf` at its entry fires zero times while the text is lost. The control path
+is therefore not where the text disappears, and the previous "next step" in this
+record was wrong.
+
+What is still true, from earlier traces:
+
+- the domain mapper receives `LN_CT_SdtBlock_sdtContent`
+- `IsInShape()` is false, so shape-based guards do nothing
+- the element mapping routes `w:sdt` inside `w:txbxContent` correctly
+- the shadow-replay trace contains only VML/DrawingML tokens, no `w:` tokens,
+  which means textbox content is not going through that replay at all
+
+So the open question is now: **how is the content of `w:txbxContent` parsed at
+all?** Plain paragraphs in the same textbox render, so it is parsed by something;
+whatever that path is, it does not deliver an `w:sdt` subtree to the domain
+mapper as text. That is the next thing to trace, and it is a smaller question
+than the one this family started with.
