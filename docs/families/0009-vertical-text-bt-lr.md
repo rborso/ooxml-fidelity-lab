@@ -151,3 +151,33 @@ and it is now a named object rather than a writing-mode theory.
 ## Probes reverted
 
 The instrumented tree is back to a clean build; the probes were temporary.
+
+## The reproducer was wrong, twice
+
+`layout-flow` lives on the `<v:textbox>` element in Word's output. My synthetic
+put it on `<v:rect>`, so the probe correctly reported an empty `maLayoutFlow` -
+the document never set it. Rebuilt with the style where Word puts it:
+
+| variant | `VERTICAL` | `TEXT` |
+|---|---|---|
+| no vertical style | 1 | 1 |
+| `layout-flow:vertical` (TB_RL) | 1 | 1 |
+| `…;mso-layout-flow-alt:bottom-to-top` (BT_LR) | 1 | 1 |
+
+**All three render.** The writing mode is applied and `BT_LR` works. Every
+writing-mode theory in this record is therefore dead, including the one the last
+trace appeared to confirm.
+
+`getTextBox()` returns `maShapeModel.mxTextBox` - the same object `TextBoxContext`
+fills - so the two-object theory is dead as well.
+
+## What is left
+
+The corpus document's three vertical frames clip their titles. `mso-fit-shape-to-
+text` is absent (0 occurrences) and zeroing the textbox inset changes nothing
+(`Experience` 0 and `King` 10 in both). So neither auto-height nor inset margins
+explain it, and the remaining difference is geometry between a 44 pt frame and
+the text placed in it.
+
+Two invalid reproducers in one family is the reason this has taken so long: each
+one "confirmed" a mechanism that did not exist in the real document.
