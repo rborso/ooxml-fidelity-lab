@@ -1,10 +1,25 @@
 """Delta-debug a DOCX down to the smallest document that still fails.
 
-A 40-page letter is not a bug report. ddmin over the body elements turns it
-into one, and the reduced file is what gets attached upstream and committed as a
-regression fixture.
+A 40-page form is not a bug report. This deletes parts of `word/document.xml`
+and keeps the deletion if the symptom survives, so what comes out is the
+smallest document that still fails.
 
-The render predicate is injected, so the algorithm can be tested without Word.
+The oracle for "still fails" is the renderer itself, injected as a predicate so
+the algorithm can be tested without Word.
+
+Three rules, each learned by watching this tool produce a confident wrong
+answer:
+
+- the token under investigation must still be *present* in the document, or the
+  reducer deletes the evidence and converges on an empty file;
+- it must still be present the *same number of times*, or one of Word's
+  `mc:Choice`/`mc:Fallback` duplicates gets deleted;
+- only content is removable. Deleting property elements changes which code path
+  the renderer takes, and the "confirmed cause" that produced was an artefact of
+  the reducer.
+
+lxml is used deliberately: it round-trips namespace prefixes, and `mc:Ignorable`
+refers to prefixes by name.
 """
 
 from __future__ import annotations
@@ -15,7 +30,18 @@ from pathlib import Path
 from lxml import etree
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 DOCUMENT = "word/document.xml"
+
+REMOVABLE = {
+    f"{{{W}}}p", f"{{{W}}}r", f"{{{W}}}tbl", f"{{{W}}}tr", f"{{{W}}}tc",
+    f"{{{W}}}drawing", f"{{{W}}}pict", f"{{{W}}}bookmarkStart", f"{{{W}}}bookmarkEnd",
+    f"{{{W}}}proofErr", f"{{{W}}}commentRangeStart", f"{{{W}}}commentRangeEnd",
+    f"{{{W}}}hyperlink", f"{{{W}}}sdt",
+}
+DESCEND = {
+    f"{{{W}}}body", f"{{{W}}}p", f"{{{W}}}tbl", f"{{{W}}}tr", f"{{{W}}}tc", f"{{{W}}}r",
+}
 
 
 def read_body(src: Path) -> tuple[list, bytes]:
@@ -47,6 +73,18 @@ def write_subset(src: Path, dst: Path, keep: set[int]) -> Path:
     return dst
 
 
+def write_subset_raw(src: Path, dst: Path, root) -> None:
+    """Write `dst` from `src`, replacing document.xml with the given tree."""
+    with zipfile.ZipFile(src) as archive:
+        entries = {name: archive.read(name) for name in archive.namelist()}
+    entries[DOCUMENT] = etree.tostring(root, xml_declaration=True,
+                                       encoding="UTF-8", standalone=True)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
+
+
 def ddmin(count: int, fails) -> list[int]:
     """Classic ddmin over indices. `fails(indices) -> bool` must be monotone
     enough: removing elements never makes a real failure disappear."""
@@ -76,31 +114,16 @@ def ddmin(count: int, fails) -> list[int]:
 def document_text(path: Path) -> str:
     """Concatenated text of every w:t, ignoring run boundaries.
 
-    A token that Word splits across runs never appears as a contiguous string in
-    the XML, so searching the raw markup would say the text was never there.
+    Word splits words across runs, so searching the raw markup would say the
+    text was never there.
     """
     with zipfile.ZipFile(path) as archive:
-        xml = archive.read(DOCUMENT)
-    root = etree.fromstring(xml)
-    parts = [node.text or "" for node in root.iter(f"{{{W}}}t")]
-    return "".join(parts)
+        root = etree.fromstring(archive.read(DOCUMENT))
+    return "".join(node.text or "" for node in root.iter(f"{{{W}}}t"))
 
 
 def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = True):
-    """The token must be in the document and missing from the render.
-
-    "Missing from the render" alone is degenerate: deleting the paragraph that
-    carries the text keeps it missing, so the minimizer happily deletes the very
-    content under investigation and converges on an empty document that proves
-    nothing. Requiring the token to still be present in the source makes every
-    deletion a decision about the surviving text.
-
-    `keep_count` also pins how many times the token occurs. Word duplicates a
-    shape's text into both `mc:Choice` and `mc:Fallback`; without the count the
-    minimizer deletes the Choice and keeps the Fallback, producing a document
-    that Word would render and LibreOffice drops - a different bug than the one
-    being investigated, arrived at by accident.
-    """
+    """The token must be in the document and missing from the render."""
     import subprocess
 
     workdir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +132,7 @@ def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = 
     def predicate(path: Path) -> bool:
         try:
             text = document_text(path)
-        except (KeyError, zipfile.BadZipFile, OSError):
+        except (KeyError, zipfile.BadZipFile, OSError, etree.XMLSyntaxError):
             return False
         count = text.count(token)
         if count == 0:
@@ -137,17 +160,10 @@ def render_predicate(binary: str, token: str, workdir: Path, keep_count: bool = 
     return predicate
 
 
-def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) -> dict:
-    """Reduce any subtree, not just body children.
-
-    ddmin over body children cannot isolate a construct nested inside a shape:
-    the whole paragraph is either kept or dropped, and the paragraph is the
-    document. This removes arbitrary subtrees instead, deepest-first in effect,
-    because a container is only queued once its parent refused to drop it.
-
-    lxml is used deliberately: it round-trips namespace prefixes unchanged, and
-    `mc:Ignorable` refers to prefixes by name.
-    """
+def _reduce(src: Path, dst: Path, predicate, max_candidates: int,
+            removable: set[str], descend: set[str],
+            skip_children_of: str | None) -> dict:
+    """Shared loop: try removing children, keep the removal that still fails."""
     with zipfile.ZipFile(src) as archive:
         entries = {name: archive.read(name) for name in archive.namelist()}
     root = etree.fromstring(entries[DOCUMENT])
@@ -175,21 +191,16 @@ def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) ->
         raise ValueError("predicate does not hold on the source document")
 
     queue = [body]
-    MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
     while queue and tried < max_candidates:
         parent = queue.pop(0)
-        # Never break an AlternateContent pair. Word duplicates the same content
-        # into mc:Choice and mc:Fallback, and deleting the Choice leaves a
-        # Fallback-only block, which is invalid, changes which code path the
-        # renderer takes, and manufactures a bug that is not the one under
-        # investigation. The first run of this reducer did exactly that and the
-        # "confirmed cause" it produced was an artefact of the reducer.
-        if parent.tag == MC + "AlternateContent":
+        if parent.tag not in descend:
+            continue
+        if skip_children_of and parent.tag == skip_children_of:
             continue
         for child in list(parent):
             if tried >= max_candidates:
                 break
-            if len(child) == 0:
+            if child.tag not in removable or len(child) == 0:
                 continue
             index = parent.index(child)
             parent.remove(child)
@@ -199,31 +210,29 @@ def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) ->
             queue.append(child)
 
     write_subset_raw(src, dst, root)
-    return {
-        "elements_before": before,
-        "elements_after": sum(1 for _ in root.iter()),
-        "candidates_tried": tried,
-        "out": str(dst),
-    }
+    return {"elements_before": before, "elements_after": sum(1 for _ in root.iter()),
+            "candidates_tried": tried, "out": str(dst)}
 
 
-def write_subset_raw(src: Path, dst: Path, root) -> None:
-    """Write `dst` from `src`, replacing document.xml with the given tree."""
-    with zipfile.ZipFile(src) as archive:
-        entries = {name: archive.read(name) for name in archive.namelist()}
-    entries[DOCUMENT] = etree.tostring(root, xml_declaration=True,
-                                       encoding="UTF-8", standalone=True)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(dst, "w", zipfile.ZIP_DEFLATED) as archive:
-        for name, data in entries.items():
-            archive.writestr(name, data)
+def minimize_content(src: Path, dst: Path, predicate, max_candidates: int = 200) -> dict:
+    """Remove content items only, keeping every property element intact."""
+    return _reduce(src, dst, predicate, max_candidates, REMOVABLE, DESCEND, None)
+
+
+def minimize_deep(src: Path, dst: Path, predicate, max_candidates: int = 150) -> dict:
+    """Remove any subtree, but never break an mc:Choice / mc:Fallback pair.
+
+    Deleting a Choice leaves a Fallback-only block: invalid, a different code
+    path in the renderer, and a bug that is not the one under investigation.
+    """
+    class Any:
+        def __contains__(self, _):
+            return True
+    return _reduce(src, dst, predicate, max_candidates, Any(), Any(), f"{{{MC}}}AlternateContent")
 
 
 def minimize_docx(src: Path, dst: Path, predicate, max_candidates: int = 400) -> dict:
-    """Reduce `src` until `predicate(path)` stops holding.
-
-    The predicate receives a temporary DOCX and returns True if it still fails.
-    """
+    """Reduce body-level children with ddmin. Kept for the simple cases."""
     children, _ = read_body(src)
     tried = 0
 
