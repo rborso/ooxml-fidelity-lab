@@ -223,3 +223,20 @@ fixed-size rotated shape holds vertical text that does not fit, should the shape
 grow (Word appears to) or should the text be clipped (which is what happens)?
 That decision determines whether the fix is in `drawinglayer` text layout or in
 shape sizing, and it is not mine to make.
+
+## Auto-grow refuted (iteration 7)
+
+Trial: `PROP_TextAutoGrowHeight` forced true when the text box flow is vertical,
+so the shape could grow to show text Word shows (project rule: visible wins).
+
+| binary | Experience | King-prefix |
+|---|---|---|
+| instrumented, trial | 0 | 10 |
+| instrumented, baseline | 0 | 10 |
+
+Identical. Auto-grow does not recover the clipped title. Parked per the
+30-iteration rule; twelve hypotheses are now refuted in this record.
+
+Note also that the instrumented binary renders this document slightly differently
+from the scored one (0/10 against 1/11) — close enough for A/B within the debug
+tree, not interchangeable with a scored run.
