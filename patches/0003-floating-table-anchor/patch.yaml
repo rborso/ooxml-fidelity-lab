@@ -1,0 +1,21 @@
+id: "0003"
+title: "A floating table with an anchor but no position"
+family: "0010"
+upstream: "writerfilter"
+component: "filters and storage"
+
+reproducer: "hu-gov-9.21 … k-ntes_tev-kenys-g_folytat-sa_HU"
+expected:
+  before: "text at x=3, outside the print area, 36 displaced findings"
+  after: "text at x=56, matching Word"
+
+files:
+  - "sw/source/writerfilter/dmapper/TablePositionHandler.cxx"
+
+revert: "git apply -R fix.patch, rebuild, re-snapshot"
+
+notes: >
+  OOXML permits w:tblpPr with horzAnchor and neither tblpXSpec nor tblpX. The
+  handler left HoriOrient at NONE with position 0, which places the table
+  outside the print area; Word aligns it to the anchor. The fix treats the
+  missing spec as left-aligned to the anchor.
