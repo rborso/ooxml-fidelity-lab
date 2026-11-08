@@ -429,6 +429,7 @@ def _verdict(doc: dict) -> tuple[str, list[str]]:
     tier = doc.get("tier", "")
     reasons: list[str] = []
     breaking = False
+    content_lost = False
 
     if tier in ("RENDER-FAIL", "ORACLE-FAIL"):
         return "unknown", [doc.get("error") or "the document could not be rendered"]
@@ -452,6 +453,7 @@ def _verdict(doc: dict) -> tuple[str, list[str]]:
         elif issue.startswith("document:"):
             reasons.append(issue)
             breaking = True
+            content_lost = True
 
     t2 = doc.get("t2") or {}
     if t2.get("fonts_unexpected"):
@@ -475,8 +477,12 @@ def _verdict(doc: dict) -> tuple[str, list[str]]:
         return "breaking", reasons
 
     if tier == "T0":
-        reasons.append("text differs")
-        return "breaking", reasons
+        # T0 with no content issue means only the page count differed, and the
+        # ratio check above already decided whether that is breaking. Labelling
+        # every T0 broken put a 1.1x pagination difference next to real text
+        # loss in the reviewer's queue.
+        return ("breaking" if content_lost else "annoying"), (
+            reasons or ["pagination differs"])
 
     if tier in ("FLOW", "ORDER", "SEGMENT", "T1", "T2", "T2-fonts"):
         if not reasons:

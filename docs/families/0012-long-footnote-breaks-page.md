@@ -1,6 +1,6 @@
 # Family 0012 — a very long footnote breaks the page after its reference
 
-**Status:** isolated, no fix
+**Status:** decided — annoying, not fixed
 **Family key:** word footnote of ~900 words × page break after the reference
 **Tier:** T0
 **Fix class:** renderer (footnote layout)
@@ -84,15 +84,19 @@ page, which means it caps the footnote area and continues the footnote on the
 following page (or pushes the reference), rather than letting the footnote own
 the page.
 
-## Decision needed
+## Decision
 
-The fix is a policy question: when a footnote is longer than the page, should
-Writer
+**Annoying, not fixed.** Applying the project's own severity rule: all of the
+document's text is present in both renders, and 8 pages against 7 is a 1.14x
+difference, well inside the 1.3x that counts as unusable. The rules classify
+that as annoying — fix if cheap, otherwise adjudicate and report.
 
-- **cap** the footnote area so the body always keeps a minimum, and continue the
-  footnote on the next page, or
-- **move the reference** to the next page (Word's other strategy for footnotes
-  that cannot fit)?
+A fix is not cheap. The footnote area is allowed to grow until the page is full,
+by design (`GrowFrame`: "No check if FixSize since FootnoteContainer are
+variable up to their max. height"), and the maximum comes from the page style.
+Capping it changes pagination for every document with footnotes, which is a
+large part of the corpus, in exchange for removing a one-page difference on one
+document.
 
-Both change pagination for every document with footnotes. The trace says where
-the numbers come from; it does not say which behaviour the project wants.
+The verdict page classifies it as annoying with the measurements beside it, so a
+reviewer sees it without it competing with real content loss.
