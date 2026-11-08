@@ -33,20 +33,25 @@ SAME_ROW_PT = 6.0
 OUTSIDE_PT = 40.0
 
 
-def _content_box(pages: list[dict]) -> list[float] | None:
-    xs = [w["b"][0] for p in pages for w in p["words"]]
-    ys = [w["b"][1] for p in pages for w in p["words"]]
-    xe = [w["b"][2] for p in pages for w in p["words"]]
-    ye = [w["b"][3] for p in pages for w in p["words"]]
-    if not xs:
+def _content_box(words: list[dict]) -> list[float] | None:
+    """Box of the words on one page.
+
+    Per page, not per document: a document-wide box makes every page with less
+    content than the fullest one look like it has content outside it, and a
+    single stray dot above the first word of the busiest page fires.
+    """
+    if not words:
         return None
+    xs = [w["b"][0] for w in words]
+    ys = [w["b"][1] for w in words]
+    xe = [w["b"][2] for w in words]
+    ye = [w["b"][3] for w in words]
     return [min(xs), min(ys), max(xe), max(ye)]
 
 
 def check(reference: dict, candidate: dict,
           displaced_pt: float = DISPLACED_PT) -> dict:
     """Compare placements. Returns findings, worst-first, per page."""
-    ref_box = _content_box(reference["pages"])
     findings: list[dict] = []
 
     for ref_page, cand_page in zip(reference["pages"], candidate["pages"]):
@@ -54,12 +59,15 @@ def check(reference: dict, candidate: dict,
         ref_words = ref_page["words"]
         cand_words = cand_page["words"]
 
-        # outside: candidate words that fall outside the area Word uses
+        # outside: a word pushed into the left or right margin. Horizontal only:
+        # content at the top or bottom of a page is normal, and a document-wide
+        # or per-page box that includes the vertical axis fires on every page
+        # with less content than its neighbours.
+        ref_box = _content_box(ref_words)
         if ref_box:
             for w in cand_words:
-                x0, y0, x1, y1 = w["b"]
-                if (x0 < ref_box[0] - OUTSIDE_PT or x1 > ref_box[2] + OUTSIDE_PT
-                        or y0 < ref_box[1] - OUTSIDE_PT or y1 > ref_box[3] + OUTSIDE_PT):
+                x0, _y0, x1, _y1 = w["b"]
+                if x0 < ref_box[0] - OUTSIDE_PT or x1 > ref_box[2] + OUTSIDE_PT:
                     findings.append({"kind": "outside", "page": number,
                                      "word": w["t"], "box": w["b"]})
                     break   # one per page is enough to make the point
