@@ -135,3 +135,26 @@ a shape construct; the pagination divergence has at least two causes and the
 anchor attributes measured here do not separate them. This family is not
 patchable from evidence the project currently has, and the honest move is to
 leave it `isolated` rather than invent a condition.
+
+## Trace: these are Writer frames, not drawinglayer
+
+`SAL_LOG=+sw.core` on `bz55459` with the instrumented build:
+
+```
+sw.core lines: 1,381,382
+SwTextBoxHelper::syncProperty: 407 calls
+unhandled: InteropGrabBag(66) LineWidth(31) LineStyle(31) FillStyle(31)
+           Transformation(30) ParaAdjust(30) CharHeight(30) Graphic(28) ...
+unhandled property value: CustomShapeGeometry:TextPreRotateAngle: 0  (4x)
+```
+
+So unlike family 0009's VML boxes, these shapes **do** become Writer text
+frames and go through the property sync. That means the height question is
+answerable in `sw` after all — but no size, auto-height or wrap property appears
+among the unhandled ones, so the extra height is not a dropped property.
+
+The only unusual entry is `CustomShapeGeometry:TextPreRotateAngle`, which is
+about rotating text inside the shape, not the frame's height.
+
+Next: trace what the frame's height and wrap type are at layout time, rather
+than which properties arrive.
