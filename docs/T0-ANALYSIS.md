@@ -350,7 +350,7 @@ each section names a document, what differs numerically, and where.
 
 ## `bz73977-125317`
 
-**Differs:** pages 7 vs 8; shapes 280 vs 98; placement visible {'displaced': 122}
+**Differs:** pages 7 vs 8 — see `families/0012-long-footnote-breaks-page.html`; shapes 280 vs 98; placement visible {'displaced': 122}
 **Pages holding less text:** p1 (572 vs 14 words)
 **Moved:** `odio` on page 2 by 59 pt
 **Moved:** `et` on page 2 by 299 pt
