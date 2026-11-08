@@ -137,6 +137,7 @@ def _page(title: str, active: str, body: str, prefix: str = "") -> str:
         ("index.html", "Overview", "index"),
         ("runs.html", "Runs", "runs"),
         ("compare.html", "Compare", "compare"),
+        ("verdict.html", "Verdict", "verdict"),
         ("baseline.html", "Baseline", "baseline"),
         ("families.html", "Families", "families"),
     ]
@@ -417,6 +418,122 @@ def _build_run_pages(runs_dir: Path, runs: list[dict], out_dir: Path) -> int:
     return built
 
 
+
+def _verdict(doc: dict) -> tuple[str, list[str]]:
+    """Breaking / annoying / cosmetic, per the project rules.
+
+    Judged by what a user loses, not by how many pixels move: content that Word
+    shows and Collabora does not is breaking; content that is present but placed
+    or paginated differently is annoying; typography is cosmetic.
+    """
+    tier = doc.get("tier", "")
+    reasons: list[str] = []
+    breaking = False
+
+    if tier in ("RENDER-FAIL", "ORACLE-FAIL"):
+        return "unknown", [doc.get("error") or "the document could not be rendered"]
+
+    # FIELD means the difference was adjudicated as legitimate - a regenerated
+    # date or TOC. Counting it as breaking would put nine documents in front of
+    # a reviewer on every run.
+    if tier == "FIELD":
+        return "annoying", ["adjudicated: generated field result"]
+
+    t0 = doc.get("t0") or {}
+    for issue in t0.get("content_issues") or []:
+        if issue.startswith("page count"):
+            nums = [int(n) for n in re.findall(r"\d+", issue)]
+            if len(nums) >= 2:
+                lo, hi = sorted(nums)
+                ratio = hi / max(lo, 1)
+                reasons.append("%s (%.1fx)" % (issue, ratio))
+                if ratio >= 1.3:
+                    breaking = True
+        elif issue.startswith("document:"):
+            reasons.append(issue)
+            breaking = True
+
+    t2 = doc.get("t2") or {}
+    if t2.get("fonts_unexpected"):
+        reasons.append("unexpected font substitution: " +
+                       ", ".join(sorted(t2["fonts_unexpected"])[:3]))
+
+    placed = doc.get("placement") or {}
+    sev = placed.get("severity")
+    kinds = placed.get("kinds") or {}
+    if sev == "breaking":
+        breaking = True
+        reasons.append("placement: " + ", ".join(
+            "%s x%d" % (k, v) for k, v in sorted(kinds.items())))
+    elif sev == "visible":
+        reasons.append("placement: " + ", ".join(
+            "%s x%d" % (k, v) for k, v in sorted(kinds.items())))
+
+    # A finished document that only differs in typography or pagination is not
+    # reported as broken; the tier alone is too coarse for the pre-check.
+    if breaking:
+        return "breaking", reasons
+
+    if tier == "T0":
+        reasons.append("text differs")
+        return "breaking", reasons
+
+    if tier in ("FLOW", "ORDER", "SEGMENT", "T1", "T2", "T2-fonts"):
+        if not reasons:
+            reasons.append({
+                "FLOW": "same words, different pages",
+                "ORDER": "same words, different reading order",
+                "SEGMENT": "same characters, different word boundaries",
+                "T1": "line breaks differ",
+                "T2": "geometry differs beyond tolerance",
+                "T2-fonts": "font substitution outside the metric-compatible set",
+            }[tier])
+        return "annoying", reasons
+
+    return "cosmetic", reasons or ["matches within tolerance"]
+
+
+def _build_verdict_page(runs: list[dict], out_dir: Path) -> dict:
+    """One row per document: what a reviewer should look at first."""
+    if not runs:
+        return {}
+    latest = runs[-1]
+    rows = []
+    counts = {"breaking": 0, "annoying": 0, "cosmetic": 0, "unknown": 0}
+    for doc in latest["documents"]:
+        sev, reasons = _verdict(doc)
+        counts[sev] = counts.get(sev, 0) + 1
+        rows.append((sev, doc, reasons))
+
+    order = {"breaking": 0, "annoying": 1, "unknown": 2, "cosmetic": 3}
+    rows.sort(key=lambda r: (order.get(r[0], 9), r[1]["id"]))
+
+    body = [
+        f'<p class="mut">Pre-check for <a class="mono" href="runs/{_esc(latest["_dir"])}.html">'
+        f'{_esc(latest["_dir"])}</a>: will these documents survive being edited in '
+        f'both Word and Collabora? Breaking means the user loses content or the '
+        f'document becomes unusable; annoying means it still reads correctly; '
+        f'cosmetic is typography.</p>',
+        '<div class="cards">',
+    ]
+    for key in ("breaking", "annoying", "cosmetic", "unknown"):
+        body.append(f'<div class="card"><div class="n">{counts.get(key, 0)}</div>'
+                    f'<div class="l">{key}</div></div>')
+    body.append("</div>")
+
+    body.append("<h2>Documents</h2><table><tr><th>Verdict</th><th>Document</th>"
+                "<th>Why</th></tr>")
+    for sev, doc, reasons in rows:
+        link = f"documents/{_esc(latest['_dir'])}/{_esc(doc['id'])}.html"
+        body.append(
+            f'<tr><td>{_sev_badge(sev)}</td>'
+            f'<td class="mono"><a href="{link}">{_esc(doc["id"])}</a></td>'
+            f'<td class="mut">{_esc("; ".join(reasons[:2]))}</td></tr>')
+    body.append("</table>")
+
+    (out_dir / "verdict.html").write_text(_page("Verdict", "verdict", "\n".join(body)))
+    return counts
+
 LANE_LABELS = {
     "upstream": "upstream image",
     "built-clean": "built-clean",
@@ -543,6 +660,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
     families = load_families(families_dir)
     latest = runs[-1] if runs else None
     compare_diffs = _build_compare_page(runs, lanes or {}, out_dir, runs_dir)
+    verdict_counts = _build_verdict_page(runs, out_dir)
 
     # ---- overview ---------------------------------------------------------
     body = []
@@ -729,6 +847,7 @@ def build(runs_dir: Path, families_dir: Path, out_dir: Path, lanes: dict | None 
         "families": len(families),
         "documents": doc_pages,
         "compare_diffs": compare_diffs,
+        "verdict": verdict_counts,
     }, indent=2))
 
     return {"runs": len(runs), "families": len(families), "documents": doc_pages, "out": str(out_dir)}
