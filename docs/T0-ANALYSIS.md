@@ -313,6 +313,14 @@ line breaking and spacing differ, the text itself is present.
 **Words Word has that Collabora does not:** `ЗАЯВЛЕНИЕ`, `о`, `присоединении`, `Получателя`
 **Pages holding less text:** p1 (465 vs 18 words)
 
+**Extra detail:** 447 tokens missing; Collabora renders 18 words on page 1
+and an empty page 2, where Word fills one page with 451 words.
+The text is in the model - `--convert-to txt/odt/docx` all contain it -
+so this is layout, not import. Converting the same document to ODT and
+rendering that gives 194 words, still far short of 451, so the failure
+reproduces without the DOCX importer. Removing the 57 `w:trHeight`
+entries, or forcing `hRule="atLeast"`, changes nothing (18 words).
+
 ## `bz68326-163238`
 
 
