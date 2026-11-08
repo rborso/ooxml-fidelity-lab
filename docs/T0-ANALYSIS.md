@@ -263,6 +263,12 @@ each section names a document, what differs numerically, and where.
 **Moved:** `is` on page 1 by -43 pt
 **Moved:** `an` on page 1 by -43 pt
 
+**Extra detail:** 12 pages vs 13; 56 words shifted 40-130 pt inside their
+lines (reflow, not displacement); one revision line missing
+(`Rev`, `1`, `October`, `2010`). The document is named
+`bug62613-Bugged-Spacing-MSO.docx`, and the symptom matches the name:
+line breaking and spacing differ, the text itself is present.
+
 ## `bz62613-77075`
 
 **Differs:** pages 9 vs 12; shapes 487 vs 116; placement visible {'displaced': 70}
