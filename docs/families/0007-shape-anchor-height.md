@@ -158,3 +158,26 @@ about rotating text inside the shape, not the frame's height.
 
 Next: trace what the frame's height and wrap type are at layout time, rather
 than which properties arrive.
+
+## The images are the bigger finding
+
+Comparing what each engine actually draws across the whole document
+(`bz55459-67866`, run-20261107T203600Z):
+
+```
+Word       15 pages   65 images drawn
+Collabora  21 pages   17 images drawn
+```
+
+**48 images are missing.** The inline objects declared in the document are
+21 (`wp:inline`, all inside table cells, extents around 235x180 pt), and the
+drawn set includes banners around 480x54. So the page-count difference this
+record has chased for so long may be secondary: the visible defect a user would
+report first is that most pictures are not there.
+
+The one banner measured in both engines was 477x40 in Word and 480x54 in
+Collabora, so at least one image *is* drawn, just 35% taller.
+
+Next: identify which images are dropped — the `wp:inline` set or the banners —
+and whether LibreOffice replaces them with vector shapes. `docs/T0-ANALYSIS.md`
+lists this document among 63 T0s with the same structure of evidence.
