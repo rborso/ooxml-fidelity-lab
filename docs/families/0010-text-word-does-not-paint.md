@@ -107,3 +107,30 @@ than a property change.
 Under the project rules this **is** breaking, unlike the extra tokens this family
 was opened for: content outside the margin can be clipped when printed. The
 family now has two symptoms and needs splitting.
+
+## Decision: legacy .doc placement defects are reported, not fixed
+
+The remaining placement findings are almost all `.doc`:
+
+```
+bug38779-ExampleTextBoxShifted2.doc   text box shifted 49 pt left
+bug35332-Picture-prargraph-problem.doc
+bug45386-45386_example.doc            137 displaced words
+bug38779-38779_min.doc
+```
+
+They live in the WW8 binary filter: no XML to inspect, and neither the construct
+index nor the minimizer applies to them, so diagnosing one needs new tooling
+before any fix.
+
+**Decision (2026-11-07):** the detector reports them and the pre-check counts
+them; no renderer fix is attempted now. Reasons:
+
+- legacy `.doc` shrinks as a share of real documents every year, while every
+  hour in WW8 is an hour not spent on `.docx`, where the tooling already pays;
+- all four remain visible as `placement: breaking` in every run, so the finding
+  is not lost — it is reported without a fix, which the rules permit for
+  "annoying" and require the record to state plainly.
+
+Revisit if a user-facing case appears where a `.doc` form is unusable, or if the
+`.docx` families are closed and tooling time is available.
