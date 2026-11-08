@@ -440,6 +440,12 @@ def _verdict(doc: dict) -> tuple[str, list[str]]:
     if tier == "FIELD":
         return "annoying", ["adjudicated: generated field result"]
 
+    # SEGMENT means the character multiset is identical: "fields" came out as
+    # "fie" + "lds". Nothing is lost, so it cannot be breaking, whatever the
+    # token counts say.
+    if tier == "SEGMENT":
+        return "annoying", ["same characters, different word boundaries"]
+
     t0 = doc.get("t0") or {}
     for issue in t0.get("content_issues") or []:
         if issue.startswith("page count"):
