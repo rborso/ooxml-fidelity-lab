@@ -14,6 +14,14 @@ each section names a document, what differs numerically, and where.
 | shapes missing | 16 |
 | placement findings | 37 |
 
+> **Reading the image counts.** They are not comparable between engines.
+> LibreOffice renders `.wmf` and `.emf` metafiles as vector drawings rather than
+> embedded images, so a document can show "images 175 vs 59" with no content
+> missing at all — `bz75208-157040` has 2891 drawings in Collabora against 427
+> in Word for exactly that reason. Only `.pict` is genuinely dropped: one
+> document, 46 images, verified by rendering a bare one (`images=0, drawings=1`).
+> Treat "images" in the table below as "raster images", not "pictures".
+
 ## The most extreme cases, in order of how obvious they should be on a page
 
 | document | what the measurements say |
